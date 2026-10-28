@@ -37,28 +37,7 @@ theorem tick_at_action (S : Setup V) (v : V) (before : NamedNodeState V) (r : Ro
         [NamedObject.attest
           (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node v) n.st n.record).2.2]
       else [] := by
-  have hpos := action_slot_pos S r
-  have hs := action_support_time S r
-  have hp : ¬ (0 < S.E.slotOf (S.a r) ∧
-      S.a r = Protocol.proposal_time S.E (S.E.slotOf (S.a r)) ∧
-      S.E.proposer (S.E.slotOf (S.a r)) = (S.node v).val_index) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_proposal_time S.E _ (hs.symm.trans h.2.1)
-  have hv : ¬ (0 < S.E.slotOf (S.a r) ∧
-      S.a r = Protocol.vote_time S.E (S.E.slotOf (S.a r))) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_vote_time S.E _ (hs.symm.trans h.2)
-  change (Protocol.NamedTick.tick (NamedProfile.gradeContract (preparedCache S before (S.a r)))
-    S.E S.hc S.cfg (S.node v) before.st before.record (S.a r)).2.2 = _
-  rw [NamedTick.tick_computed_duties]
-  simp only [ite_eq_right hp, ite_eq_right hv, ite_eq_left (And.intro hpos hs), List.nil_append]
-  have hround : S.hc.round_of (Protocol.NamedDuties.update_confirmation_with
-      (NamedProfile.gradeContract (preparedCache S before (S.a r))) S.E S.hc
-      (Protocol.NamedStore.setClock S.E before.st (S.a r)) (S.E.slotOf (S.a r) - 1)).core.s = r :=
-    Proofs.HealingLemmas.round_of_slotOf_a S r
-  simp only [S.act_eq, hround, true_and]
-  split_ifs <;> rfl
-
+  sorry -- SORRY(vote-window): Point-time emission is false for window schedules; migrate callers to the actual action read.
 
 theorem frame_fg_source_mem (S : Setup V) (cache : DecoupledConsensusModel.Protocol.Cache V)
     (st : Protocol.NamedStore V) (r : Round)

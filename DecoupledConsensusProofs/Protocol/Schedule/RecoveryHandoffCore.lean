@@ -291,12 +291,12 @@ private theorem core_mem_pool_of_emits
   have htick₁eq :
       (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node w)
         n.st n.record t).1 =
-      if t = S.hc.a S.E.Δ (S.hc.round_of st₃.core.s) ∧
+      if t = (S.node w).act (S.hc.round_of st₃.core.s) ∧
           (S.node w).awake (S.hc.round_of st₃.core.s) = true then
         (Protocol.NamedDuties.attest_with
           gc S.E S.hc (S.node w) st₃ n.record).1
       else st₃ := by
-    simp only [Proofs.NamedTick.tick_computed_duties, S.act_eq]
+    simp only [Proofs.NamedTick.tick_computed_duties]
     dsimp only [st₃, st₂, voted, voteDue, st₁, proposed, proposalDue, s']
     split_ifs <;> rfl
   have hfinalfields :

@@ -134,11 +134,11 @@ private theorem confirmation_named_tick [Fintype V] (S : Setup V) (cache : Cache
         st2 (s - 1) h2
     · exact h2
   have hstage : (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node v) st record t).1 =
-      if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      if t = (S.node v).act (S.hc.round_of st3.core.s) ∧
           (S.node v).awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node v) st3 record).1
       else st3 := by
-    simp only [NamedTick.tick_computed_duties, S.act_eq]
+    simp only [NamedTick.tick_computed_duties]
     rw [apply_ite (fun out : Protocol.NamedStore V × Protocol.NamedRecord ×
       List (NamedObject V) => out.1)]
   change Proofs.NamedConfirmationMembership.Invariant S.E S.cfg
@@ -232,7 +232,7 @@ theorem tick_clock [Fintype V] (S : Setup V) (v : V) (n : NamedNodeState V) (t :
       (Execution.NamedNode.tick S v n t).1.st.core.s = S.E.slotOf t := by
   change (Protocol.NamedTick.tick _ S.E S.hc S.cfg (S.node v) n.st n.record t).1.core.t = t ∧
     (Protocol.NamedTick.tick _ S.E S.hc S.cfg (S.node v) n.st n.record t).1.core.s = _
-  simp only [NamedTick.tick_computed_duties, S.act_eq]
+  simp only [NamedTick.tick_computed_duties]
   split_ifs <;> simp only [attestation_time, attestation_slot, confirmation_time,
     confirmation_slot, gf_time, gf_slot, proposal_time, proposal_slot,
     Protocol.NamedStore.setClock, and_self]

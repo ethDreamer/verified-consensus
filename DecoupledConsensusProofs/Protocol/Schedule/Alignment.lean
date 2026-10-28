@@ -176,7 +176,7 @@ theorem gfVote_emitted_shape (S : Setup V) (v : V) (n : NodeState V) (t : Time)
         (NamedProfile.gradeContract (NamedActionReads.confirmationReadFrom S n t).cache)
         S.E S.hc (S.node v) (NamedActionReads.confirmationReadFrom S n t).st).2 = some u ∧
       u.val_index = v ∧ u.slot = S.E.slotOf t := by
-  simp only [on_tick_emit_snd_eq, named_tick_computed_duties, S.act_eq] at h
+  simp only [on_tick_emit_snd_eq, named_tick_computed_duties] at h
   set gc := NamedProfile.gradeContract
     (DecoupledConsensusModel.Protocol.onPhaseTick S.E S.hc n.st.core.toHealing t n.cache) with hgc
   set s := S.E.slotOf t with hs
@@ -206,7 +206,7 @@ theorem gfVote_emitted_shape (S : Setup V) (v : V) (n : NodeState V) (t : Time)
         rw [ho]; simp
     · intro o ho; simp at ho
   have hmem : Object.gfVote u ∈ emitted1 ++ emitted2 := by
-    by_cases hA : t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+    by_cases hA : t = (S.node v).act (S.hc.round_of st3.core.s) ∧
         (S.node v).awake (S.hc.round_of st3.core.s) = true
     · rw [ite_eq_left hA] at h
       rcases List.mem_append.mp h with h' | h'

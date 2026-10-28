@@ -56,10 +56,7 @@ theorem tick_attestation_fields (gc : Protocol.GradeContract V) (S : Setup V)
     (h : NamedObject.attest a ∈
       (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node v) st record t).2.2) :
     t = S.a a.round ∧ (S.node v).awake a.round = true ∧ a.val_index = v := by
-  simp only [NamedTick.tick_computed_duties, S.act_eq] at h
-  apply attestation_suffix_fields gc S v _ record t a _ ?_ h
-  simp only [List.mem_append, no_attest_vote, or_false]
-  exact no_attest_proposal _ _ a
+  sorry -- SORRY(vote-window): Emission time is Node.act, not S.a; migrate the point-time callers.
 
 theorem action_slot_pos (S : Setup V) (r : Round) :
     0 < S.E.slotOf (S.a r) := by
@@ -84,27 +81,7 @@ theorem tick_at_action (S : Setup V) (v : V) (before : NamedNodeState V) (r : Ro
         [NamedObject.attest
           (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node v) n.st n.record).2.2]
       else [] := by
-  have hpos := action_slot_pos S r
-  have hs := action_support_time S r
-  have hp : ¬ (0 < S.E.slotOf (S.a r) ∧
-      S.a r = Protocol.proposal_time S.E (S.E.slotOf (S.a r)) ∧
-      S.E.proposer (S.E.slotOf (S.a r)) = (S.node v).val_index) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_proposal_time S.E _ (hs.symm.trans h.2.1)
-  have hv : ¬ (0 < S.E.slotOf (S.a r) ∧
-      S.a r = Protocol.vote_time S.E (S.E.slotOf (S.a r))) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_vote_time S.E _ (hs.symm.trans h.2)
-  change (Protocol.NamedTick.tick (NamedProfile.gradeContract (preparedCache S before (S.a r)))
-    S.E S.hc S.cfg (S.node v) before.st before.record (S.a r)).2.2 = _
-  rw [NamedTick.tick_computed_duties]
-  simp only [ite_eq_right hp, ite_eq_right hv, ite_eq_left (And.intro hpos hs), List.nil_append]
-  have hround : S.hc.round_of (Protocol.NamedDuties.update_confirmation_with
-      (NamedProfile.gradeContract (preparedCache S before (S.a r))) S.E S.hc
-      (Protocol.NamedStore.setClock S.E before.st (S.a r)) (S.E.slotOf (S.a r) - 1)).core.s = r :=
-    Proofs.HealingLemmas.round_of_slotOf_a S r
-  simp only [S.act_eq, hround, true_and]
-  split_ifs <;> rfl
+  sorry -- SORRY(vote-window): Point-time emission is false for window schedules; migrate callers to the actual action read.
 
 theorem action_read_invariant (S : Setup V) (rho : NamedRun V)
     (i : Nat) (v : V) (r : Round) :

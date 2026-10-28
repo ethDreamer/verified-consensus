@@ -502,11 +502,11 @@ theorem mem_pool_of_emits_core (S : Setup V) {rho : NamedRun V}
     · exact ⟨rfl, rfl⟩
     · exact ⟨rfl, rfl⟩
   have htick1eq : (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node w) n.st n.record t).1 =
-      if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      if t = (S.node w).act (S.hc.round_of st3.core.s) ∧
           (S.node w).awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node w) st3 n.record).1
       else st3 := by
-    simp only [Proofs.NamedTick.tick_computed_duties, S.act_eq]
+    simp only [Proofs.NamedTick.tick_computed_duties]
     dsimp only [st3, st2, voted, voteDue, st1, proposed, proposalDue, s']
     split_ifs <;> rfl
   have hfinalfields :

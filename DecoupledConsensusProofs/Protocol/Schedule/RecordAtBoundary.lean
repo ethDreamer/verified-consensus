@@ -40,11 +40,11 @@ theorem node_tick_stable_cases (S : Setup V) (w : V) (n : NamedNodeState V) (t :
   let st3 := if 0 < S.E.slotOf t ∧ t = Protocol.support_cutoff S.E (S.E.slotOf t) then
     Protocol.NamedDuties.update_confirmation_with gc S.E S.hc st2 (S.E.slotOf t - 1) else st2
   have hout : (NamedNode.tick S w n t).1.st =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      (if t = (S.node w).act (S.hc.round_of st3.core.s) ∧
           (S.node w).awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node w) st3 n.record).1 else st3) := by
     show (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node w) n.st n.record t).1 = _
-    simp only [Proofs.NamedTick.tick_computed_duties, S.act_eq]
+    simp only [Proofs.NamedTick.tick_computed_duties]
     dsimp only [st3, st2, st1, st0]
     split_ifs <;> rfl
   have hlast : (NamedNode.tick S w n t).1.st.core.latest_stable =

@@ -58,12 +58,7 @@ private theorem tick_attestation_fields (gc : Protocol.GradeContract V) (S : Set
     (h : NamedObject.attest a ∈
       (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node v) st record t).2.2) :
     t = S.a a.round ∧ (S.node v).awake a.round = true ∧ a.val_index = v := by
-  simp only [NamedTick.tick_computed_duties, S.act_eq] at h
-  apply attestation_suffix_fields gc S v _ record t a _ ?_ h
-  simp only [List.mem_append, no_attest_vote, or_false]
-  exact no_attest_proposal _ _ a
-
-
+  sorry -- SORRY(vote-window): Emission time is Node.act, not S.a; migrate the point-time callers.
 
 private theorem action_read_round (S : Setup V) (before : NamedNodeState V) (r : Round) :
     S.hc.round_of (actionReadFrom S before r).st.core.s = r :=

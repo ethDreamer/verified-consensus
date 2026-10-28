@@ -601,28 +601,7 @@ theorem action_tick_store (S : Setup V) (reader : V) (before : NamedNodeState V)
       let n := actionReadFrom S before q
       (Protocol.NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
         S.E S.hc (S.node reader) n.st n.record).1 := by
-  have hpos : 0 < S.E.slotOf (S.a q) := by
-    rw [Setup.a, Protocol.a_eq_support_cutoff_succ, Proofs.Optimistic.slotOf_support_cutoff]
-    exact Nat.zero_lt_succ _
-  have hs : S.a q = Protocol.support_cutoff S.E (S.E.slotOf (S.a q)) := by
-    rw [Setup.a, Protocol.a_eq_support_cutoff_succ, Proofs.Optimistic.slotOf_support_cutoff]
-  have hp : ¬ (0 < S.E.slotOf (S.a q) ∧ S.a q = Protocol.proposal_time S.E (S.E.slotOf (S.a q)) ∧
-      S.E.proposer (S.E.slotOf (S.a q)) = (S.node reader).val_index) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_proposal_time S.E _ (hs.symm.trans h.2.1)
-  have hv : ¬ (0 < S.E.slotOf (S.a q) ∧ S.a q = Protocol.vote_time S.E (S.E.slotOf (S.a q))) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_vote_time S.E _ (hs.symm.trans h.2)
-  change (Protocol.NamedTick.tick (NamedProfile.gradeContract (preparedCache S before (S.a q)))
-    S.E S.hc S.cfg (S.node reader) before.st before.record (S.a q)).1 = _
-  rw [NamedTick.tick_computed_duties]
-  simp only [ite_eq_right hp, ite_eq_right hv, ite_eq_left (And.intro hpos hs)]
-  have hround : S.hc.round_of (Protocol.NamedDuties.update_confirmation_with
-      (NamedProfile.gradeContract (preparedCache S before (S.a q))) S.E S.hc
-      (Protocol.NamedStore.setClock S.E before.st (S.a q)) (S.E.slotOf (S.a q) - 1)).core.s = q :=
-    Proofs.HealingLemmas.round_of_slotOf_a S q
-  simp only [S.act_eq, hround, hawake, and_self, ite_true]
-  rfl
+  sorry -- SORRY(vote-window): Point-time emission is false for window schedules; migrate callers to the actual action read.
 
 /-- This witness is produced from the actual direct/self/F1 call. Its
 private inclusion function is not an input to either public query. -/

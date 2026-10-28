@@ -194,7 +194,7 @@ private theorem on_tick_emit_attest_shape (S : Setup V) (v : V) (n : NodeState V
             st3.core.toHealing n.Λ).2])) := by
   have hrec := on_tick_emit_record_eq S v n t
   have hsnd := on_tick_emit_snd_eq S v n t
-  simp only [named_tick_computed_duties, S.act_eq] at hrec hsnd
+  simp only [named_tick_computed_duties] at hrec hsnd
   set gc := NamedProfile.gradeContract
     (DecoupledConsensusModel.Protocol.onPhaseTick S.E S.hc n.st.core.toHealing t n.cache) with hgcdef
   set s := S.E.slotOf t with hsdef
@@ -230,7 +230,7 @@ private theorem on_tick_emit_attest_shape (S : Setup V) (v : V) (n : NodeState V
       · obtain ⟨w, -, hw⟩ := List.mem_map.mp h1
         simp [← hw]
       · simp at h1
-  by_cases hcond : t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+  by_cases hcond : t = (S.node v).act (S.hc.round_of st3.core.s) ∧
       (S.node v).awake (S.hc.round_of st3.core.s) = true
   · rw [ite_eq_left hcond] at hrec hsnd
     exact ⟨st3, gc, emitted1 ++ emitted2, hpre, Or.inr ⟨hrec, hsnd⟩⟩

@@ -1,4 +1,6 @@
 module
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowAction
+public import DecoupledConsensusProofs.Protocol.Schedule.VoteWindow
 public import DecoupledConsensusProofs.Protocol.Grades.LegacyVocabulary
 public import DecoupledConsensusProofs.Execution.OutageProvenance
 public import DecoupledConsensusProofs.Protocol.ChainState.MatchingProgress

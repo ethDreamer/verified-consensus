@@ -122,31 +122,7 @@ private theorem action_tick_at (S : Setup V) (v : V) (before : NamedNodeState V)
         [Object.attest
           (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node v) n.st n.record).2.2]
       else [] := by
-  have hpos := action_slot_pos S r
-  have hs := action_support_time S r
-  have hp : ¬ (0 < S.E.slotOf (S.a r) ∧
-      S.a r = Protocol.proposal_time S.E (S.E.slotOf (S.a r)) ∧
-      S.E.proposer (S.E.slotOf (S.a r)) = (S.node v).val_index) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_proposal_time S.E _ (hs.symm.trans h.2.1)
-  have hv : ¬ (0 < S.E.slotOf (S.a r) ∧
-      S.a r = Protocol.vote_time S.E (S.E.slotOf (S.a r))) := by
-    intro h
-    exact Proofs.Optimistic.support_cutoff_ne_vote_time S.E _ (hs.symm.trans h.2)
-  rw [action_on_tick_emit_snd_eq,
-    action_named_tick_computed_duties
-      (NamedProfile.gradeContract
-        (DecoupledConsensusModel.Protocol.onPhaseTick S.E S.hc before.st.core.toHealing (S.a r) before.cache))
-      S.E S.hc S.cfg (S.node v) before.st before.record (S.a r)]
-  simp only [ite_eq_right hp, ite_eq_right hv, ite_eq_left (And.intro hpos hs), List.nil_append]
-  have hround : S.hc.round_of (Protocol.NamedDuties.update_confirmation_with
-      (NamedProfile.gradeContract
-        (DecoupledConsensusModel.Protocol.onPhaseTick S.E S.hc before.st.core.toHealing (S.a r) before.cache))
-      S.E S.hc
-      (Protocol.NamedStore.setClock S.E before.st (S.a r)) (S.E.slotOf (S.a r) - 1)).core.s = r :=
-    Proofs.HealingLemmas.round_of_slotOf_a S r
-  simp only [S.act_eq, hround, true_and]
-  split_ifs <;> rfl
+  sorry -- SORRY(vote-window): Point-time emission is false for window schedules; migrate callers to the actual action read.
 
 /-- Every awake scheduled honest action emits the exact attestation computed by
 `actionAttestationAt`. This stronger identity bridge is needed when a proof

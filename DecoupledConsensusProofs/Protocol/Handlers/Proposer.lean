@@ -218,11 +218,11 @@ private theorem proposerOk_named_tick (S : Setup V) (gc : Protocol.GradeContract
     · exact proposerOk_of_T_eq rfl h2
     · exact h2
   have hstage : (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node v) st record t).1 =
-      if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      if t = (S.node v).act (S.hc.round_of st3.core.s) ∧
           (S.node v).awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node v) st3 record).1
       else st3 := by
-    simp only [NamedTick.tick_computed_duties, S.act_eq]
+    simp only [NamedTick.tick_computed_duties]
     rw [apply_ite (fun out : Protocol.NamedStore V × Protocol.NamedRecord ×
       List (NamedObject V) => out.1)]
   rw [hstage]
