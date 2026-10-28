@@ -296,7 +296,7 @@ private theorem core_mem_pool_of_emits
         (Protocol.NamedDuties.attest_with
           gc S.E S.hc (S.node w) st₃ n.record).1
       else st₃ := by
-    rw [Proofs.NamedTick.tick_computed_duties]
+    simp only [Proofs.NamedTick.tick_computed_duties, S.act_eq]
     dsimp only [st₃, st₂, voted, voteDue, st₁, proposed, proposalDue, s']
     split_ifs <;> rfl
   have hfinalfields :

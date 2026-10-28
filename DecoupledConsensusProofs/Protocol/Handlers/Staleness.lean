@@ -194,7 +194,7 @@ private theorem scheduler_h_j_mono {State Record BlockOut VoteOut AttOut Out : T
     · exact le_rfl
   have hout : (Protocol.TickScheduler.runWith E hc nd ops blockOut voteOut attOut
       (fun st record emitted => (st, record, emitted)) st record t).1 =
-      if t = hc.a E.Δ (hc.round_of (ops.slot st3)) ∧
+      if t = nd.act (hc.round_of (ops.slot st3)) ∧
           nd.awake (hc.round_of (ops.slot st3)) = true then
         (ops.attestation st3 record).1
       else st3 := by

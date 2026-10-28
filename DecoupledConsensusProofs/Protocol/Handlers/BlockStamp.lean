@@ -333,7 +333,7 @@ private theorem tick_stampCarry (gc : Protocol.GradeContract V) (S : Setup V)
   have h03 := stampCarry_trans
     (stampCarry_trans h01 h12 hb01) h23 (fun _ h => hb12 (hb01 h))
   have hstore : (Protocol.NamedTick.tick gc S.E S.hc S.cfg nd st record t).1 =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      (if t = nd.act (S.hc.round_of st3.core.s) ∧
           nd.awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc nd st3 record).1 else st3) := by
     rw [NamedTick.tick_computed_duties]
@@ -476,7 +476,7 @@ private theorem tick_proposal_stage_fields (gc : Protocol.GradeContract V)
     dsimp only [st3]
     split_ifs <;> exact hs21
   have hstore : (Protocol.NamedTick.tick gc S.E S.hc S.cfg nd st record t).1 =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      (if t = nd.act (S.hc.round_of st3.core.s) ∧
           nd.awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc nd st3 record).1 else st3) := by
     rw [NamedTick.tick_computed_duties]

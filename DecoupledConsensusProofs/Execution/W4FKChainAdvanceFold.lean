@@ -234,7 +234,7 @@ theorem tick_eq_stage3 (S : Setup V) (gc : Protocol.GradeContract V)
     (nd : Protocol.Node V) (st : Protocol.NamedStore V)
     (record : Protocol.NamedRecord) (t : Time) :
     (Protocol.NamedTick.tick gc S.E S.hc S.cfg nd st record t).1 =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of (tickStage3 S gc nd st t).core.s) ∧
+      (if t = nd.act (S.hc.round_of (tickStage3 S gc nd st t).core.s) ∧
           nd.awake (S.hc.round_of (tickStage3 S gc nd st t).core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc nd
           (tickStage3 S gc nd st t) record).1

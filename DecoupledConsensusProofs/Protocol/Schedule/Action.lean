@@ -83,7 +83,7 @@ private theorem action_named_tick_computed_duties
       let emitted2 := if voteDue then voted.2.toList.map Object.gfVote else []
       let st3 := if 0 < s ∧ t = Protocol.support_cutoff E s then
         Protocol.NamedDuties.update_confirmation_with gc E hc st2 (s - 1) else st2
-      if t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
+      if t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
         let attested := Protocol.NamedDuties.attest_with gc E hc nd st3 record
         (attested.1, attested.2.1, emitted1 ++ emitted2 ++ [Object.attest attested.2.2])
       else (st3, record, emitted1 ++ emitted2) := by
@@ -145,7 +145,7 @@ private theorem action_tick_at (S : Setup V) (v : V) (before : NamedNodeState V)
       S.E S.hc
       (Protocol.NamedStore.setClock S.E before.st (S.a r)) (S.E.slotOf (S.a r) - 1)).core.s = r :=
     Proofs.HealingLemmas.round_of_slotOf_a S r
-  simp only [hround, true_and]
+  simp only [S.act_eq, hround, true_and]
   split_ifs <;> rfl
 
 /-- Every awake scheduled honest action emits the exact attestation computed by

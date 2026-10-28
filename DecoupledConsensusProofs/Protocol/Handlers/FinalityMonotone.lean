@@ -155,7 +155,7 @@ theorem tick_F (gc : Protocol.GradeContract V) (E : Env V) (hc : Protocol.HealCo
     · exact confirmation_with_F gc E hc st2 (s - 1)
     · rfl
   have hout : (Protocol.NamedTick.tick gc E hc cfg nd st record t).1 =
-      (if t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
+      (if t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc E hc nd st3 record).1 else st3) := by
     rw [NamedTick.tick_computed_duties]
     dsimp only [st3, st2, st1, st0, s]

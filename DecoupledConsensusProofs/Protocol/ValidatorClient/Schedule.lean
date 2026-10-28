@@ -171,7 +171,7 @@ private theorem runWith_sg_pool_subset
     · exact Finset.Subset.refl _
   have hchain : st.core.sg_pool r ⊆ st3.core.sg_pool r :=
     hstep1.trans (hstep2.trans hstep3)
-  by_cases hP4 : t = hc.a E.Δ (hc.round_of (ops.slot st3)) ∧
+  by_cases hP4 : t = nd.act (hc.round_of (ops.slot st3)) ∧
       nd.awake (hc.round_of (ops.slot st3)) = true
   · rw [ite_eq_left hP4]
     exact hchain.trans (hatt st3 record r)

@@ -506,7 +506,7 @@ theorem mem_pool_of_emits_core (S : Setup V) {rho : NamedRun V}
           (S.node w).awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node w) st3 n.record).1
       else st3 := by
-    rw [Proofs.NamedTick.tick_computed_duties]
+    simp only [Proofs.NamedTick.tick_computed_duties, S.act_eq]
     dsimp only [st3, st2, voted, voteDue, st1, proposed, proposalDue, s']
     split_ifs <;> rfl
   have hfinalfields :
@@ -589,7 +589,7 @@ theorem tick_fields_from_proposal
     rw [hst3def]
     split_ifs <;> exact ⟨rfl, rfl⟩
   have hstore : (Protocol.NamedTick.tick gc S.E S.hc S.cfg nd st record t).1 =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      (if t = nd.act (S.hc.round_of st3.core.s) ∧
           nd.awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc nd st3 record).1 else st3) := by
     rw [Proofs.NamedTick.tick_computed_duties]

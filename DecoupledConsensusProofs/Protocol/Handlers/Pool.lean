@@ -774,7 +774,7 @@ private theorem named_tick_computed_duties (gc : Protocol.GradeContract V) (E : 
       let emitted2 := if voteDue then voted.2.toList.map NamedObject.gfVote else []
       let st3 := if 0 < s ∧ t = Protocol.support_cutoff E s then
         Protocol.NamedDuties.update_confirmation_with gc E hc st2 (s - 1) else st2
-      if t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
+      if t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
         let attested := Protocol.NamedDuties.attest_with gc E hc nd st3 record
         (attested.1, attested.2.1, emitted1 ++ emitted2 ++ [NamedObject.attest attested.2.2])
       else (st3, record, emitted1 ++ emitted2) := by
@@ -809,7 +809,7 @@ theorem gfFrom_named_tick (gc : Protocol.GradeContract V) (E : Env V) (hc : Heal
   let st3 := if 0 < s ∧ t = Protocol.support_cutoff E s then
     Protocol.NamedDuties.update_confirmation_with gc E hc st2 (s - 1) else st2
   change Protocol.NamedTick.tick gc E hc cfg nd st record t =
-    (if t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
+    (if t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
       ((Protocol.NamedDuties.attest_with gc E hc nd st3 record).1,
         (Protocol.NamedDuties.attest_with gc E hc nd st3 record).2.1,
         emitted1 ++ emitted2 ++

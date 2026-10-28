@@ -170,7 +170,7 @@ private theorem named_tick_computed_duties (gc : Protocol.GradeContract V) (E : 
       let emitted2 := if voteDue then voted.2.toList.map Object.gfVote else []
       let st3 := if 0 < s ∧ t = Protocol.support_cutoff E s then
         Protocol.NamedDuties.update_confirmation_with gc E hc st2 (s - 1) else st2
-      if t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
+      if t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
         let attested := Protocol.NamedDuties.attest_with gc E hc nd st3 record
         (attested.1, attested.2.1, emitted1 ++ emitted2 ++ [Object.attest attested.2.2])
       else (st3, record, emitted1 ++ emitted2) := by
@@ -194,7 +194,7 @@ private theorem on_tick_emit_attest_shape (S : Setup V) (v : V) (n : NodeState V
             st3.core.toHealing n.Λ).2])) := by
   have hrec := on_tick_emit_record_eq S v n t
   have hsnd := on_tick_emit_snd_eq S v n t
-  rw [named_tick_computed_duties] at hrec hsnd
+  simp only [named_tick_computed_duties, S.act_eq] at hrec hsnd
   set gc := NamedProfile.gradeContract
     (DecoupledConsensusModel.Protocol.onPhaseTick S.E S.hc n.st.core.toHealing t n.cache) with hgcdef
   set s := S.E.slotOf t with hsdef

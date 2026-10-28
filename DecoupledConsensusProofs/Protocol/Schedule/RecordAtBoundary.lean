@@ -44,7 +44,7 @@ theorem node_tick_stable_cases (S : Setup V) (w : V) (n : NamedNodeState V) (t :
           (S.node w).awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node w) st3 n.record).1 else st3) := by
     show (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node w) n.st n.record t).1 = _
-    rw [Proofs.NamedTick.tick_computed_duties]
+    simp only [Proofs.NamedTick.tick_computed_duties, S.act_eq]
     dsimp only [st3, st2, st1, st0]
     split_ifs <;> rfl
   have hlast : (NamedNode.tick S w n t).1.st.core.latest_stable =

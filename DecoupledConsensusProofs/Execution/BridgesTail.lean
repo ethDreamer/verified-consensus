@@ -88,7 +88,7 @@ private theorem tick_new_body_origin (gc : Protocol.GradeContract V) (E : Env V)
     split_ifs <;> rfl
   have hout := NamedTick.tick_computed_duties gc E hc cfg nd st record t
   change Protocol.NamedTick.tick gc E hc cfg nd st record t =
-    (if t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
+    (if t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
       let a := Protocol.NamedDuties.attest_with gc E hc nd st3 record
       (a.1, a.2.1, emitted1 ++ emitted2 ++ [.attest a.2.2])
     else (st3, record, emitted1 ++ emitted2)) at hout

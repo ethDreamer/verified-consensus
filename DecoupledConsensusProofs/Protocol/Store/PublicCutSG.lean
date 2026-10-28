@@ -182,7 +182,7 @@ private theorem tick_new_stamp (gc : Protocol.GradeContract V) (S : Setup V)
       simpa only [st1, ite_eq_left hdue] using! propose_new_stamp gc S nd st0 a hpre hap
     · exact False.elim (hpre (by simpa only [st1, ite_eq_right hdue] using! ha3))
   have hstore : (Protocol.NamedTick.tick gc S.E S.hc S.cfg nd st record t).1 =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      (if t = nd.act (S.hc.round_of st3.core.s) ∧
           nd.awake (S.hc.round_of st3.core.s) = true
         then (Protocol.NamedDuties.attest_with gc S.E S.hc nd st3 record).1 else st3) := by
     rw [NamedTick.tick_computed_duties]

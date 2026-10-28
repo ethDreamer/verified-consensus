@@ -56,7 +56,7 @@ theorem tick_at_action (S : Setup V) (v : V) (before : NamedNodeState V) (r : Ro
       (NamedProfile.gradeContract (preparedCache S before (S.a r))) S.E S.hc
       (Protocol.NamedStore.setClock S.E before.st (S.a r)) (S.E.slotOf (S.a r) - 1)).core.s = r :=
     Proofs.HealingLemmas.round_of_slotOf_a S r
-  simp only [hround, true_and]
+  simp only [S.act_eq, hround, true_and]
   split_ifs <;> rfl
 
 

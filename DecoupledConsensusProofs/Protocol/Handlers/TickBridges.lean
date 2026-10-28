@@ -1194,7 +1194,7 @@ private theorem runWith_sg_pool_mem
       · right; exact ⟨B, hBeq, hP1, hrow⟩
     · rw [hst1, ite_eq_right hP1, hclock st t (E.slotOf t) r] at hb1
       left; exact hb1
-  by_cases hP4 : t = hc.a E.Δ (hc.round_of (ops.slot st3)) ∧
+  by_cases hP4 : t = nd.act (hc.round_of (ops.slot st3)) ∧
       nd.awake (hc.round_of (ops.slot st3)) = true
   · rw [ite_eq_left hP4] at hb ⊢
     rcases hatt st3 record r hb with h3 | heq

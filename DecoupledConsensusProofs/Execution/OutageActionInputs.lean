@@ -56,8 +56,7 @@ theorem tick_attestation_fields (gc : Protocol.GradeContract V) (S : Setup V)
     (h : NamedObject.attest a ∈
       (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node v) st record t).2.2) :
     t = S.a a.round ∧ (S.node v).awake a.round = true ∧ a.val_index = v := by
-  rw [NamedTick.tick_computed_duties] at h
-  dsimp only at h
+  simp only [NamedTick.tick_computed_duties, S.act_eq] at h
   apply attestation_suffix_fields gc S v _ record t a _ ?_ h
   simp only [List.mem_append, no_attest_vote, or_false]
   exact no_attest_proposal _ _ a
@@ -104,7 +103,7 @@ theorem tick_at_action (S : Setup V) (v : V) (before : NamedNodeState V) (r : Ro
       (NamedProfile.gradeContract (preparedCache S before (S.a r))) S.E S.hc
       (Protocol.NamedStore.setClock S.E before.st (S.a r)) (S.E.slotOf (S.a r) - 1)).core.s = r :=
     Proofs.HealingLemmas.round_of_slotOf_a S r
-  simp only [hround, true_and]
+  simp only [S.act_eq, hround, true_and]
   split_ifs <;> rfl
 
 theorem action_read_invariant (S : Setup V) (rho : NamedRun V)

@@ -756,7 +756,7 @@ theorem tick_bodies_and_coreT_from_proposal (gc : Protocol.GradeContract V) (S :
     dsimp only [st3, Protocol.NamedDuties.update_confirmation_with]
     split_ifs <;> exact hT21
   have hstore : (Protocol.NamedTick.tick gc S.E S.hc S.cfg nd st record t).1 =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      (if t = nd.act (S.hc.round_of st3.core.s) ∧
           nd.awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc nd st3 record).1 else st3) := by
     dsimp only [Protocol.NamedTick.tick, Protocol.TickScheduler.runWith,

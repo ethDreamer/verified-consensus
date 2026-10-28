@@ -390,7 +390,7 @@ private theorem tick_rows_after_proposal (gc : Protocol.GradeContract V) (S : Se
     Protocol.NamedDuties.update_confirmation_with gc S.E S.hc st2 (s - 1) else st2
   have h32 : st3.sg_rows = st1.sg_rows := by dsimp only [st3, st2]; split_ifs <;> rfl
   have hstore : (Protocol.NamedTick.tick gc S.E S.hc S.cfg nd st record t).1 =
-      (if t = S.hc.a S.E.Δ (S.hc.round_of st3.core.s) ∧
+      (if t = nd.act (S.hc.round_of st3.core.s) ∧
           nd.awake (S.hc.round_of st3.core.s) = true
         then (Protocol.NamedDuties.attest_with gc S.E S.hc nd st3 record).1 else st3) := by
     rw [NamedTick.tick_computed_duties]
@@ -457,7 +457,7 @@ private theorem action_tick_store (S : Setup V) (reader : V) (before : NamedNode
       (NamedProfile.gradeContract (preparedCache S before (S.a q))) S.E S.hc
       (Protocol.NamedStore.setClock S.E before.st (S.a q)) (S.E.slotOf (S.a q) - 1)).core.s = q :=
     Proofs.HealingLemmas.round_of_slotOf_a S q
-  simp only [hround, hawake, and_self, ite_true]
+  simp only [S.act_eq, hround, hawake, and_self, ite_true]
   rfl
 
 

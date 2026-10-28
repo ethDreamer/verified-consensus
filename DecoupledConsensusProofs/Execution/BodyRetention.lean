@@ -129,7 +129,7 @@ private theorem tick_step (gc : Protocol.GradeContract V) (E : Env V)
   have h03 := bodyStep_trans (clock_step E st t)
     (bodyStep_trans h01 (bodyStep_trans h12 h23))
   have hstore : (Protocol.NamedTick.tick gc E hc cfg nd st record t).1 =
-      (if t = hc.a E.Δ (hc.round_of st3.core.s) ∧
+      (if t = nd.act (hc.round_of st3.core.s) ∧
           nd.awake (hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc E hc nd st3 record).1 else st3) := by
     rw [NamedTick.tick_computed_duties]

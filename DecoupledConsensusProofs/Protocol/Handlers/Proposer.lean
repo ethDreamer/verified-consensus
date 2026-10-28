@@ -222,8 +222,7 @@ private theorem proposerOk_named_tick (S : Setup V) (gc : Protocol.GradeContract
           (S.node v).awake (S.hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node v) st3 record).1
       else st3 := by
-    rw [NamedTick.tick_computed_duties]
-    dsimp only
+    simp only [NamedTick.tick_computed_duties, S.act_eq]
     rw [apply_ite (fun out : Protocol.NamedStore V × Protocol.NamedRecord ×
       List (NamedObject V) => out.1)]
   rw [hstage]

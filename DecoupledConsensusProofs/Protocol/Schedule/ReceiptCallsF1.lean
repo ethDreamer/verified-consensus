@@ -298,7 +298,7 @@ theorem tick_new_full_row_origin (gc : Protocol.GradeContract V) (E : Env V)
     dsimp only [st3, st2]
     split_ifs <;> simp only [hgf, hconf]
   have hstore : (Protocol.NamedTick.tick gc E hc cfg nd st record t).1 =
-      (if t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
+      (if t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true then
         (Protocol.NamedDuties.attest_with gc E hc nd st3 record).1 else st3) := by
     rw [NamedTick.tick_computed_duties]
     dsimp only [st3, st2, st1, st0, s]
@@ -306,7 +306,7 @@ theorem tick_new_full_row_origin (gc : Protocol.GradeContract V) (E : Env V)
   have hlocal : a ∈ st3.sg_rows a.round ∨
       NamedObject.attest a ∈ (Protocol.NamedTick.tick gc E hc cfg nd st record t).2.2 := by
     rw [hstore] at hpost
-    by_cases hA : t = hc.a E.Δ (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true
+    by_cases hA : t = nd.act (hc.round_of st3.core.s) ∧ nd.awake (hc.round_of st3.core.s) = true
     · rw [ite_eq_left hA] at hpost
       rcases admit_row_mem_cases hc st3
           (Protocol.NamedDuties.attest_with gc E hc nd st3 record).2.2 a hpost with hold | hrow
