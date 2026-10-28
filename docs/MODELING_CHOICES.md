@@ -424,7 +424,29 @@ are in `DecoupledConsensusProofs/ReviewTheorem.lean`, and each speaks about
 attestation rows, ledgers or heights, which have no protocol-independent form.
 Do not read them as bundle guarantees.
 
-## 11 Scope of this document
+## 11 Public-grid vote windows
+
+The action instant is per validator: `Node.act r`. The execution setup requires
+completion of the round's grade 0 before the action (`T_r + Δ ≤ act r`),
+the action before the next round opening, and delivery by the next round's
+earliest grade cutoff (`act r + Δ ≤ T_{r+1} − 5Δ`). These are P1 and P2.
+The strict delivery bound then puts a delivered vote strictly before that cutoff.
+
+P3 additionally requires `∃ k : Nat, act r = (k : Time) * Δ`. The public
+handler schedule in §7.2 permits ticks only at these multiples of `Δ`, and the
+attestation guard tests equality with `act r`; window inequalities alone do not
+make the action reachable. For example, take `Δ = 2`, `R = 3`, and
+`act r = 24r + 3`. Grade 0 completes at `24r + 2`, the action remains in
+round `r`, and `act r + Δ = 24r + 5 ≤ 24r + 14`, the next G2 early cutoff.
+Thus P1 and P2 hold, but all action times are odd and all public ticks are even.
+Such a node emits no attestations at public ticks, even when always awake.
+
+The paper's point schedule `T_r + 6Δ` satisfies all three conditions using
+`R ≥ 3`; the existing concrete witnesses retain this schedule. The public-grid
+condition states an implicit property of that schedule explicitly. It does not
+alter which times the scheduler may tick.
+
+## 12 Scope of this document
 
 This document covers the current model. It records no history of a choice, and
 it omits the proof-side vocabulary of `DecoupledConsensusInternal`. Read

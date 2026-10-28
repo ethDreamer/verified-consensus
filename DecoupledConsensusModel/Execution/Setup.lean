@@ -107,8 +107,14 @@ structure Setup (V : Type) [DecidableEq V] [Fintype V] where
   node : V → Protocol.Node V
   /-- The node's validator identity, equal to the validator running it. -/
   node_val_index : ∀ v, (node v).val_index = v
-  /-- Nodes use the shared round action instant (PROTOCOL.md `sec:healing-schedule`). -/
-  act_eq : ∀ v r, (node v).act r = hc.a E.Δ r
+  /-- Attestations read completed grade 0 (PROTOCOL.md `sec:healing-schedule`). -/
+  act_post_completion : ∀ v r, Protocol.domain E hc r .g0 ≤ (node v).act r
+  /-- Each attestation remains inside its own round (PROTOCOL.md `sec:sg-schedule`). -/
+  act_before_round_end : ∀ v r, (node v).act r < Protocol.opening E hc (r + 1)
+  /-- Strict delivery reaches the next earliest cutoff (PROTOCOL.md `sec:grades`). -/
+  act_pre_cutoff : ∀ v r, (node v).act r + E.Δ ≤ Protocol.early E hc (r + 1) .g2
+  /-- Every action is reachable by public ticks (PROTOCOL.md `sec:public-handlers`). -/
+  act_public : ∀ v r, ∃ k : Nat, (node v).act r = (k : Time) * E.Δ
   /-- The timeout is a whole number of rounds and at least two rounds
   (`sec:healing-schedule`, `sec:state-machine`). -/
   timeout_rounds : hc.R ∣ cfg.timeoutDelay ∧ 2 * hc.R ≤ cfg.timeoutDelay

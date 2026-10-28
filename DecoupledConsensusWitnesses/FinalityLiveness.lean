@@ -1,4 +1,5 @@
 module
+public import DecoupledConsensusProofs.Protocol.Schedule.VoteWindow
 public import DecoupledConsensusInternal.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusModel
@@ -66,7 +67,10 @@ def S : Setup (Fin 2) where
   cfg := cfg
   node := node
   node_val_index := by intro v; rfl
-  act_eq := by intro v r; rfl
+  act_post_completion := by intro v r; exact hc.a_post_completion E r
+  act_before_round_end := by intro v r; exact hc.a_before_round_end E r
+  act_pre_cutoff := by intro v r; exact hc.a_pre_cutoff E r
+  act_public := by intro v r; exact hc.a_public E r
   timeout_rounds := by decide
   committee_nonempty := by
     intro s
