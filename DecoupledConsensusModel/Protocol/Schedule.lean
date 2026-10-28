@@ -68,6 +68,8 @@ structure Node (V : Type) where
   /-- Participation at each round action. A false value suppresses the
   whole combined attestation duty; clock ticks and Goldfish duties remain. -/
   awake : Round → Bool
+  /-- The combined attestation time in each round (PROTOCOL.md `sec:healing-schedule`). -/
+  act : Round → Time
 
 section Vocabulary
 

@@ -107,6 +107,8 @@ structure Setup (V : Type) [DecidableEq V] [Fintype V] where
   node : V → Protocol.Node V
   /-- The node's validator identity, equal to the validator running it. -/
   node_val_index : ∀ v, (node v).val_index = v
+  /-- Nodes use the shared round action instant (PROTOCOL.md `sec:healing-schedule`). -/
+  act_eq : ∀ v r, (node v).act r = hc.a E.Δ r
   /-- The timeout is a whole number of rounds and at least two rounds
   (`sec:healing-schedule`, `sec:state-machine`). -/
   timeout_rounds : hc.R ∣ cfg.timeoutDelay ∧ 2 * hc.R ≤ cfg.timeoutDelay

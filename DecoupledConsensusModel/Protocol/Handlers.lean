@@ -588,7 +588,7 @@ def runWith {V State Record BlockOut VoteOut AttOut Out Result : Type}
   let st3 :=
     if 0 < s ∧ t = Protocol.support_cutoff E s then ops.confirmation st2 (s - 1)
     else st2
-  if t = hc.a E.Δ (hc.round_of (ops.slot st3)) ∧
+  if t = nd.act (hc.round_of (ops.slot st3)) ∧
       nd.awake (hc.round_of (ops.slot st3)) = true then
     let attested := ops.attestation st3 record
     finish attested.1 attested.2.1 (emitted1 ++ emitted2 ++ [attOut attested.2.2])

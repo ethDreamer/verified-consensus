@@ -49,6 +49,7 @@ def cfg : Protocol.HeightConfig where
 def nd : Protocol.Node (Fin 2) where
   val_index := 0
   new_root := fun s => ⟨s + 1⟩
+  act := fun r => hc.a E.Δ r
   awake := fun _ => true
 
 def S : Setup (Fin 2) where
@@ -57,6 +58,7 @@ def S : Setup (Fin 2) where
   cfg := cfg
   node := fun v => { nd with val_index := v }
   node_val_index := by intro v; rfl
+  act_eq := by intro v r; rfl
   timeout_rounds := by decide
   committee_nonempty := by
     intro s
