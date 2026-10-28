@@ -43,10 +43,20 @@ own time `act v r`", subject to two premises:
   early cutoff `T_{r+1} − 5Δ` — with the strict delivery bound (a message
   sent at `t` is received before `t + Δ`), every vote is received strictly
   before every cutoff that reads it.
+- **P3 (public grid)**: `act v r` is a public time,
+  `∃ k : ℕ, (node v).act r = (k : Time) * E.Δ`. The paper's §7.2 makes the
+  public times the only tick times, so an off-grid action instant is
+  unreachable by construction; P3 states explicitly what the paper's schedule
+  satisfies implicitly. The necessity of P3 is established by the Stage 2
+  diagnostic (Δ = 2, `act r = 24·r + 3` satisfies P1 ∧ P2 and never emits an
+  attestation at any public tick); record that example and P3's rationale in
+  `docs/MODELING_CHOICES.md`, then handle the diagnostic script per the
+  standing diagnostics rule. Both intended schedule instances discharge P3 by
+  arithmetic.
 
 All existing theorems (graded delivery, confirmation safety, the healing
-results, liveness, the accountable bound) must hold under P1 ∧ P2 in place of
-the point schedule. The paper's schedule `act v r = a_r` must be recoverable
+results, liveness, the accountable bound) must hold under P1 ∧ P2 ∧ P3 in
+place of the point schedule. The paper's schedule `act v r = a_r` must be recoverable
 as an instance: note that P2 for it is `a_r + Δ ≤ T_{r+1} − 5Δ`, which is
 exactly the existing `R ≥ 3` inequality, so that instance must go through
 using only `HealConfig.R_ge_three`.
@@ -108,8 +118,10 @@ no new guard: the protected claims quantify under `Setup`, where `act_eq`
 scheduler to "fix" out-of-regime behavior.
 
 **Stage 2 — weaken the premise to the window.** Replace `act_eq` with the
-P1/P2 inequalities as `Setup` fields (state them in the repo's `Time`
-arithmetic; derive helper lemmas near `HealConfig`). Let the build surface
+P1/P2/P3 premises as `Setup` fields (state them in the repo's `Time`
+arithmetic; derive helper lemmas near `HealConfig`). P3 is authorized as
+`act_public : ∀ v r, ∃ k : Nat, (S.node v).act r = (k : Time) * S.E.Δ`
+(adjust to the repo's `Time` coercions as needed). Let the build surface
 every proof that used point-ness; repair each. Prove the concentration lemma
 where needed. Any proof you cannot close gets a tracked
 `sorry` with a same-line comment `-- SORRY(vote-window): <reason>` and an
@@ -119,7 +131,7 @@ done, or report the irreducible remainder as findings.
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
-`ι`), prove P1 ∧ P2 for it by arithmetic from `R ≥ 3`, and add or adapt a
+`ι`), prove P1 ∧ P2 ∧ P3 for it by arithmetic from `R ≥ 3`, and add or adapt a
 Witness so the regimes are satisfied by a run using it. Also register the
 point schedule as an instance (its P1/P2 proof is the `R ≥ 3` fact). Add a
 section to `docs/MODELING_CHOICES.md` describing the vote window, the two
