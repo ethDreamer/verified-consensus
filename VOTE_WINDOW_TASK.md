@@ -92,7 +92,20 @@ to `Node`. Change the scheduler guard to fire on `t = nd.act r`. Add a
 schedule, and set `act := fun r => hc.a E.Δ r` at every `Node` construction
 site (Witnesses included). Repair every broken proof by rewriting through
 `act_eq`. Acceptance: `lake build` green, `scripts/verify.sh` clean, **zero**
-`sorry`, every existing theorem statement byte-identical.
+`sorry`, the protected review surface (see the ground rules) byte-identical,
+and internal lemmas restated only as far as the guard change requires.
+
+*Resolution of the Stage 1 statement conflict (2026-10-28)*: lemmas that
+*describe the scheduler's mechanics* — unfolding equations over an arbitrary
+`Node`, such as `named_tick_computed_duties` and the public named-tick
+equation — hard-code `hc.a` and are genuinely false for arbitrary `act`.
+Restate them over `nd.act`: that is the correct general form. Consumers that
+hold a `Setup` recover the `hc.a` form through `act_eq` at the use site. The
+behavior of the generalized guard on nodes outside every regime (for example
+an attestation emitted at time zero when `act 0 = 0`) is acceptable and needs
+no new guard: the protected claims quantify under `Setup`, where `act_eq`
+(later P1/P2) excludes such schedules. Do not add slot or time guards to the
+scheduler to "fix" out-of-regime behavior.
 
 **Stage 2 — weaken the premise to the window.** Replace `act_eq` with the
 P1/P2 inequalities as `Setup` fields (state them in the repo's `Time`
@@ -117,9 +130,16 @@ premises, and both instances.
 - No new axioms. `scripts/verify.sh` checks the axiom print-out of every
   theorem; it must stay clean.
 - Never modify `docs/PROTOCOL.md` — it is a verbatim paper extract.
-- Do not change the statement of any existing theorem. New hypotheses enter
-  only through `Setup`/regime bundles, following how `timeout_rounds` and the
-  `δ_t = (2 + e)R` family are handled.
+- The protected review surface is `DecoupledConsensusStatements/**` and the
+  theorem statements in `DecoupledConsensusProofs/ReviewTheorem.lean`. Do not
+  change those statements; new hypotheses enter only through `Setup`/regime
+  bundles, following how `timeout_rounds` and the `δ_t = (2 + e)R` family are
+  handled. Internal lemmas elsewhere (`DecoupledConsensusProofs/**`,
+  `DecoupledConsensusInternal/**`, and Model helper equations) may be
+  restated when the generalization requires it, in the minimal way: an
+  equation that hard-codes `hc.a` over an arbitrary `Node` is restated over
+  `nd.act`, and `Setup`-holding consumers recover the old form via `act_eq`.
+  Record every restated lemma in the `PROGRESS.md` entry that covers it.
 - `Model` and `Statements` stay definition-only; proofs live in `Proofs`.
 - Do not attempt the "cutoff shift" variant (schedules violating P1). It is
   explicitly out of scope; if you find yourself needing votes cast before
@@ -127,6 +147,9 @@ premises, and both instances.
 - Commit in small logical steps with imperative subject lines (match
   `git log` style). Push to `origin` (ethDreamer/verified-consensus) after
   every `PROGRESS.md` entry.
+- Diagnostic scripts (such as `scripts/VoteWindowGuardCounterexample.lean`)
+  are welcome while working; before declaring a stage complete, either delete
+  them or promote the fact they check into a properly-homed lemma.
 
 ## Progress reporting (mandatory, machine-readable)
 
