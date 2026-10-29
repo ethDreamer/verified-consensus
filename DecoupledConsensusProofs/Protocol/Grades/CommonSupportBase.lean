@@ -359,13 +359,17 @@ private theorem common_support_weight (S : Setup V) (rho : NamedRun V) (b0 b1 ta
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho) (hPn : NamedRun.blockInRun S rho Pn)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hgrid : OnDeltaGrid S tau) (hcutr : tau ≤ domain S.E S.hc r .g1 + 1)
     (hconf : HonestConfirmedAtOrAbove S rho b0 s Pn.erase)
     (hhead : HonestHeadHeldAbove S rho b0 s Pn.erase) (harr : HealthySGArrival S rho b0)
     (hmaj : GradeFormingMajority S rho sr)
     (htau : tau ≤ b0) (hopen : opening S.E S.hc sr ≤ tau)
-    (hlo : s + 1 ≤ sr) (hfirst : S.a (r - 1) < b0)
+    (hlo : s + 1 ≤ sr) (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
+      NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →
+      ∀ key, a.confirmed = some key →
+        ∀ K : NamedBlock V, NamedRun.blockInRun S rho K → K.root = key →
+          Block.Preceq Pn.erase K.erase)
     (hwindow : sr - 1 ∈ Protocol.latest_window S.hc.η_SG r) :
     S.E.electorate.weightOf ((Finset.univ \ rho.honest) ∪
         commonStaleRisks S rho tau Pn sr r) <
@@ -381,7 +385,7 @@ private theorem common_support_weight (S : Setup V) (rho : NamedRun V) (b0 b1 ta
       S.E.electorate.weightOf (commonSupporters S rho tau Pn sr r) :=
     S.E.electorate.weightOf_mono
       (voters_subset_supporters_at S rho sch auth roots hR b0 b1 tau htau hgrid s sr r Pn hexec
-        hmargin hsleep hPn hno hentry hcutr hconf hhead harr hlo hopen hfirst hwindow)
+        hmargin hsleep hPn hno hentry hcutr hconf hhead harr hlo hopen hpost hwindow)
   exact lt_of_le_of_lt hleft (lt_of_lt_of_le hmaj hright)
 
 /-- **The base certificate, round-condition free (before the boundary frame).**
@@ -411,10 +415,14 @@ theorem common_support_base_at_of_early
     (hconf' : HonestConfirmedAtOrAbove S rho b0 s Pn.erase)
     (hhead : HonestHeadHeldAbove S rho b0 s Pn.erase)
     (hbudget : StableRetentionBudget S rho v s Pn.erase b1)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hrpos : 0 < r) (hgap : s + 1 < r)
     (hearlyCap : early S.E S.hc r .g2 < b1 + S.E.Δ)
-    (hfirst : S.a (r - 1) < b0) :
+    (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
+      NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →
+      ∀ key, a.confirmed = some key →
+        ∀ K : NamedBlock V, NamedRun.blockInRun S rho K → K.root = key →
+          Block.Preceq Pn.erase K.erase) :
     ∃ supportBoundary : Time, ∃ supportRound : Round,
       supportBoundary = min b0 (early S.E S.hc r .g2) ∧ supportRound ≤ r ∧
       (∀ w ∈ rho.honest, S.hc.round_of
@@ -477,7 +485,7 @@ theorem common_support_base_at_of_early
     have hmaj : GradeFormingMajority S rho rho0 := hforming rho0 hpos hcov
     exact ⟨tau, rho0, rfl, hhi, huniform,
       common_support_weight S rho b0 b1 tau s rho0 r Pn sch auth roots hR hexec hmargin hsleep
-        hPn hno hentry hgrid hcutr hconf' hhead harr hmaj htau hopen hlo hfirst
+        hPn hno hentry hgrid hcutr hconf' hhead harr hmaj htau hopen hlo hpost
         (predecessor_round_in_window_early S
           (hearlyCap.trans_le hretention) (k := s) (le_refl s) hlo hhi)⟩
   · -- Case (b): the round-`r` G2 early cutoff precedes the boundary, so the
@@ -506,7 +514,7 @@ theorem common_support_base_at_of_early
     have hmaj : GradeFormingMajority S rho rho0 := hforming rho0 hpos hcov
     exact ⟨tau, rho0, rfl, hhi, huniform,
       common_support_weight S rho b0 b1 tau s rho0 r Pn sch auth roots hR hexec hmargin hsleep
-        hPn hno hentry hgrid hcutr hconf' hhead harr hmaj htau hopen hlo hfirst
+        hPn hno hentry hgrid hcutr hconf' hhead harr hmaj htau hopen hlo hpost
         (predecessor_round_in_window_early S
           (hearlyCap.trans_le hretention) (k := s) (le_refl s) hlo hhi)⟩
 
@@ -524,10 +532,14 @@ theorem common_support_base_at
     (hconf' : HonestConfirmedAtOrAbove S rho b0 s Pn.erase)
     (hhead : HonestHeadHeldAbove S rho b0 s Pn.erase)
     (hbudget : StableRetentionBudget S rho v s Pn.erase b1)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hrpos : 0 < r) (hgap : s + 1 < r)
     (hrb1 : domain S.E S.hc r .g2 ≤ b1 + S.E.Δ)
-    (hfirst : S.a (r - 1) < b0) :
+    (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
+      NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →
+      ∀ key, a.confirmed = some key →
+        ∀ K : NamedBlock V, NamedRun.blockInRun S rho K → K.root = key →
+          Block.Preceq Pn.erase K.erase) :
     ∃ supportBoundary : Time, ∃ supportRound : Round,
       supportBoundary = min b0 (early S.E S.hc r .g2) ∧
       supportRound ≤ r ∧
@@ -544,7 +556,7 @@ theorem common_support_base_at
     nlinarith [S.E.Δ_pos]
   exact common_support_base_at_of_early S rho b0 b1 v s r Pn hexec
     hsleep hforming hv hmargin hseed hPn hno hconf' hhead hbudget hentry
-    hrpos hgap (hearlyDomain.trans_le hrb1) hfirst
+    hrpos hgap (hearlyDomain.trans_le hrb1) hpost
 
 
 #print axioms opening_le_boundary

@@ -636,9 +636,18 @@ entry lemmas transport either a pre-boundary certificate or an included-round
 certificate through the actual duty. The result extends to the next G0
 completion and restricts to the unchanged paper checkpoint, including any
 current-round emissions there. Its point-instance theorem recovers the
-original strict prior-round entry history and band. The opening certificates
-remain conclusions for the round induction to supply; this is not an added
-outage-regime premise or a completed round-invariant proof.
+original strict prior-round entry history and band. `WindowRoundInvariant`
+supplies the opening certificates by round induction. It first restricts the
+previous round's causal history to G0 completion, derives the actual emitted
+head floor for included rounds, and combines it with `first_round_hpost` for
+the stragglers. `CommonSupportBase` and `SGFromSupport` consume that `hpost`
+clause at body-ready inputs, keeping the support/risk predicate unchanged.
+After proving the opening certificate, the induction extends entry history
+to the next G0 completion and reads FG at the original `S.a r` checkpoint.
+The base, successor and all-included-round constructors are checked in that
+module. `PointRoundInvariant` records the original checkpoint fields;
+`roundInvariant_point` and explicit base/successor point corollaries recover
+them, including strict round histories, under the point equation.
 
 `CheckpointCarrierRows` retains the ancestral carrier guards, bounds honest
 row rounds by `r` at `S.a r`, and records actual emission indices strictly
@@ -650,8 +659,36 @@ actual action times. P3 proves the full-delay gap to the consumers' existing
 public-grid cutoffs. An emitter's own retained row is proved from its actual
 admission input, without using a paper-time delivery window.
 
-The full `RoundInvariant` base/step, its coverage-arrival call sites, and the
-remaining histories still need to be connected to these checked producers.
+`RoundInvariant` now carries causal signed-source, entry and carrier-band
+histories through the next G0 completion, and causal ancestral rows at the
+unchanged paper read. Its SG, support/risk and FG conclusions are unchanged.
+The shared strict-read noninterference proof accepts an arbitrary causal
+history cut: opening consumers use G0 completion, while the FG checkpoint
+consumer still uses `S.a r`. This separates the induction dependency without
+moving a paper-checkpoint claim.
+
+The round-voter inventory scans `Node.act` rather than `S.a`. Its point
+recovery theorem restores the original scan meaning. Healthy row delivery
+and delayed frontier coverage accept an arbitrary actual emission time.
+P3 guarantees that every honest reader ticks at the emitter's public action
+time; P2 keeps strict-delay receipt inside the same round. Outage-delayed
+rows are covered by the head-content argument, not assigned an additional
+strict-delay guarantee.
+
+`StragglerReadyArrival.straggler_ready_arrival_preserves` (in the
+`NamedOutageClosure` namespace) specializes the covering-arrival result to a
+reader's actual ready/raw views. It derives emission origins, resolved named
+heads and non-equivocation from that view. Its local remaining condition
+classifies the newly ready rows as post-boundary prior-round stragglers; it
+does not assume their head coverage or impose a receipt deadline. The round
+support construction directly applies the same derived floor through
+`hpost`. Wiring the view-difference classification into other incremental
+coverage consumers remains separate work.
+
+The checked causal round constructors are imported by the stable coverage
+consumer. The full output assembly, older `RoundStep`/interpolation paths,
+participation horizon consumers and remaining action-index histories are
+still being migrated; the complete library does not yet build.
 
 ## 12 Scope of this document
 

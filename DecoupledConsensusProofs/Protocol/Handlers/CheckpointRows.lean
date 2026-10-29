@@ -56,6 +56,28 @@ theorem signed_source_history (S : Setup V) (rho : NamedRun V) (r : Round) :
   intro a _hHon _hprior hem h root timeout hVote
   exact Proofs.NamedIntrinsicEntry.emitted_height_signed_source S rho hem hVote
 
+/-- Every actual emitted height row has its exact source in the same event
+(PROTOCOL.md `sec:public-handlers`). -/
+theorem window_signed_source_history (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (n : Nat) : WindowSignedSourceHistory S rho n := by
+  intro i _ a _ hi hem h root timeout hp
+  exact NamedWindowIntrinsicEntry.emitted_height_signed_source_at S rho sch.nodup hi hem hp
+
+/-- Causal ancestral rows at any strict time cut; no round classification is
+needed for an opening-phase history (PROTOCOL.md `sec:public-handlers`). -/
+theorem carrier_rows_before_time
+    (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    (reader : V) (cut : Time) {B : NamedBlock V}
+    (hB : B ∈ (NamedRun.stateBeforeTime S rho cut reader).st.bodies) :
+    CausalCarrierRowsBefore S rho (strictEventCut rho cut) B := by
+  intro A hAB a ha hHon
+  obtain ⟨_, ht, i, hi, hem⟩ :=
+    NamedOutageProvenance.honest_held_ancestor_row_before_time
+      S rho sch auth reader cut hB hAB ha hHon
+  exact ⟨i, NamedStrictEventCut.lt_strictEventCut_of_time_lt rho sch.sorted
+    cut hi ht, hi, hem⟩
+
 /-- At the strict checkpoint, all rows in every ancestral carrier pass the
 carried-round guard; honest rows came from actual strictly earlier actions. -/
 theorem prior_carrier_rows_at_checkpoint

@@ -198,8 +198,8 @@ the deadline for round `ρ - 1` but not the margin, so this premise stands in
 for the production restatement. Nothing else changes. -/
 def HealthySGArrival (S : Setup V) (rho : NamedRun V) (b0 : Time) : Prop :=
   ∀ a : NamedAttestation V, a.val_index ∈ rho.honest →
-    NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) →
-    S.a a.round + S.E.Δ ≤ b0 →
+    NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) →
+    (S.node a.val_index).act a.round + S.E.Δ ≤ b0 →
     ∀ reader ∈ rho.honest,
       let n := NamedRun.stateBeforeTime S rho
         (DecoupledConsensusModel.Protocol.domain S.E S.hc (a.round + 1) DecoupledConsensusModel.Protocol.Phase.g2) reader

@@ -128,19 +128,12 @@ theorem honestAttestation_mem_processedAtProposal_after_gst
         obtain ⟨td, htaTd, htd, j', hcall⟩ :=
           Protocol.relay_attest_after_gst S adm haHon hpHon
             (by simpa only [hta] using hpost) hacc hunaccepted hrelayHorizon
-        have htShape := (Proofs.Optimistic.emits_attest_shape S hemit).2
-        have hlo : S.a a.round ≤ td := by
-          rw [← htShape, ← hta]
-          exact htaTd
-        have hhi : td < S.a a.round + S.E.Δ := by
-          rw [← htShape, ← hta]
-          exact htd
-        have hemitAction : rho.emits S a.val_index (Object.attest a) (S.a a.round) := by
-          rw [← htShape]; exact hemit
+        have hlo : t ≤ td := by simpa only [hta] using htaTd
+        have hhi : td < t + S.E.Δ := by simpa only [hta] using htd
         have hrow : a ∈ (rho.stateBefore S (j' + 1) p).st.sg_rows a.round :=
           Proofs.NamedSGArrival.honest_row_after_call S rho
             adm.toNamedAdmissibleCore.toNamedScheduleWellFormed
-            adm.toNamedAdmissibleCore.toNamedUnforgeable haHon hemitAction hcall hlo hhi
+            adm.toNamedAdmissibleCore.toNamedUnforgeable haHon hemit hcall hlo hhi
         have hpool : a.erase ∈ (rho.stateBefore S (j' + 1) p).st.sg_pool a.round :=
           NamedAdmission.pool_view_mem _
             (Proofs.NamedRuntime.stateBefore_invariants S rho (j' + 1) p).1.1.1.2.2.2.1
@@ -159,11 +152,18 @@ theorem honestAttestation_mem_processedAtProposal_after_gst
     simpa only [duty, Protocol.proposerDutyStore,
       Proofs.Optimistic.tickStore, Run.storeBeforeTime, tp, p] using! haRead
   have hround : a.round ≤ S.hc.round_of duty.s := by
-    have hltAction : S.a a.round < Protocol.proposal_time S.E s := by
+    have hltAction : (S.node a.val_index).act a.round < Protocol.proposal_time S.E s := by
       rw [← (Proofs.Optimistic.emits_attest_shape S hemit).2]
       simpa only [tp] using hlt
-    have hr := Protocol.action_round_le_of_lt_proposal S
-      (r := a.round) (s := s) hltAction
+    have hslots : S.hc.opening_slot a.round ≤ s := by
+      by_contra hn
+      have hm := Protocol.proposal_time_mono_local S.E (Nat.le_of_lt (Nat.lt_of_not_ge hn))
+      exact (not_le_of_gt ((S.opening_le_act a.val_index a.round).trans_lt hltAction)) hm
+    have hr : a.round ≤ S.hc.round_of s := by
+      have hR : 0 < S.hc.R := lt_of_lt_of_le (by decide : 0 < 3) S.hc.R_ge_three
+      have hh : S.hc.opening_slot a.round / S.hc.R ≤ s / S.hc.R :=
+        Nat.div_le_div_right hslots
+      simpa only [Protocol.HealConfig.opening_slot, Nat.mul_div_cancel _ hR, Protocol.HealConfig.round_of] using hh
     simpa only [duty, Protocol.proposerDutyStore,
       Proofs.Optimistic.tickStore, Proofs.Optimistic.slotOf_proposal_time] using hr
   exact Protocol.mem_processed_attestations_of_pool

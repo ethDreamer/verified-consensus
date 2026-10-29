@@ -3,6 +3,7 @@ public import DecoupledConsensusInternal.ModelVocabulary
 public import DecoupledConsensusInternal.Definitions.NamedStableChainOutage
 public import DecoupledConsensusInternal.Definitions.OutageEntryRevision
 public import DecoupledConsensusInternal.Definitions.NamedOutageEntry
+public import DecoupledConsensusInternal.ModelVocabulary.Execution.WindowActionReads
 
 @[expose] public section
 
@@ -250,6 +251,75 @@ def IntrinsicConflictingCarrierBand (S : Setup V) (rho : NamedRun V)
         (Protocol.derive_named S.E S.cfg P).h + 1
 
 
+/-- Length of the strict time prefix used by an event-index history. -/
+def strictEventCut (rho : NamedRun V) (t : Time) : Nat :=
+  (rho.events.filter (fun e => decide (e.time < t))).length
+
+/-- Exact source and entry at the emitter's actual attestation duty. -/
+def WindowSignedSourceAt (S : Setup V) (rho : NamedRun V) (i : Nat)
+    (a : NamedAttestation V) (source entry : NamedBlock V) : Prop :=
+  rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)) ∧
+  let n := NamedActionReads.windowActionReadFrom S a.val_index
+    (NamedRun.stateBefore S rho i a.val_index) a.round
+  let gc := NamedProfile.gradeContract n.cache
+  NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+    ((S.node a.val_index).act a.round) ∧
+  (NamedDuties.attest_with gc S.E S.hc (S.node a.val_index) n.st n.record).2.2 = a ∧
+  source ∈ n.st.bodies ∧
+  fg_source_with gc S.E S.hc n.st.core.toHealing a.round
+    (grade2_block_with gc S.E S.hc n.st.core.toHealing a.round) = some source.erase ∧
+  NamedBlock.Preceq entry source ∧
+  entry.erase = (derive_named S.E S.cfg source).T_h ∧
+  (derive_named S.E S.cfg entry).h = (derive_named S.E S.cfg source).h ∧
+  ∃ timeout : Bool, a.height_pair = .vote
+    (derive_named S.E S.cfg source).h entry.root timeout
+
+/-- Actual nonempty signed sources at every event in a causal prefix
+(PROTOCOL.md `sec:public-handlers`). -/
+def WindowSignedSourceHistory (S : Setup V) (rho : NamedRun V) (n : Nat) : Prop :=
+  ∀ i, i < n → ∀ a : NamedAttestation V, a.val_index ∈ rho.honest →
+    rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)) →
+    NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+      ((S.node a.val_index).act a.round) →
+    ∀ h root timeout, a.height_pair = .vote h root timeout →
+      ∃ source entry : NamedBlock V, WindowSignedSourceAt S rho i a source entry ∧
+        (derive_named S.E S.cfg source).h = h ∧ entry.root = root
+
+/-- Honest entries emitted strictly before the event prefix `n`. -/
+def IntrinsicHighEntryHistoryIdx (S : Setup V) (rho : NamedRun V)
+    (P : NamedBlock V) (n : Nat) : Prop :=
+  ∀ i, i < n → ∀ a source entry, a.val_index ∈ rho.honest →
+    WindowSignedSourceAt S rho i a source entry → NamedBlock.compatible P entry = true
+
+/-- Every honest ancestral row has an emission strictly before `n`.
+The carrier's own round guard is independent of this causal bound. -/
+def CausalCarrierRowsBefore (S : Setup V) (rho : NamedRun V)
+    (n : Nat) (B : NamedBlock V) : Prop :=
+  ∀ A, NamedBlock.Preceq A B → ∀ a ∈ A.attestations, a.val_index ∈ rho.honest →
+    ∃ i, i < n ∧
+      rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)) ∧
+      NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+        ((S.node a.val_index).act a.round)
+
+/-- Ancestral rows held at the strict paper checkpoint retain their carrier
+guards. Honest emissions precede that checkpoint and may belong to its round
+(PROTOCOL.md `sec:healing-schedule`). -/
+def CheckpointCarrierRows (S : Setup V) (rho : NamedRun V)
+    (r : Round) (B : NamedBlock V) : Prop :=
+  CausalCarrierRowsBefore S rho (strictEventCut rho (S.a r)) B ∧
+  ∀ A, NamedBlock.Preceq A B →
+    carried_attestations_admissible S.hc A.erase = true ∧
+    ∀ a ∈ A.attestations, a.round ≤ S.hc.round_of A.slot ∧
+      (a.val_index ∈ rho.honest → a.round ≤ r)
+
+/-- Run-scoped conflicting carriers whose honest rows precede `n` stay
+within one height of the protected prefix. -/
+def IntrinsicConflictingCarrierBandIdx (S : Setup V) (rho : NamedRun V)
+    (P : NamedBlock V) (n : Nat) : Prop :=
+  ∀ B, NamedRun.blockInRun S rho B → CausalCarrierRowsBefore S rho n B →
+    NamedBlock.compatible P B = false →
+      (derive_named S.E S.cfg B).h ≤ (derive_named S.E S.cfg P).h + 1
+
 /-- Shared checkpoint target. The support boundary/frame and common
 inequality are internal renewable certificate data. Initial entry can use b0;
 recovery can replace both labels and accept new honest supporters. The risk
@@ -272,7 +342,7 @@ active candidate at the opening while the raw root still covers `P`: the freeze
 runs over the processed tree before clipping, `freezeRoot` over `gv.T`, and does
 not consult the FG root. The candidate form is derived at each read that needs
 it, from this arm together with the reader's own filtered-tree membership. -/
-structure RoundInvariant (S : Setup V) (rho : NamedRun V) (b0 : Time)
+structure PointRoundInvariant (S : Setup V) (rho : NamedRun V) (b0 : Time)
     (P : NamedBlock V) (r : Round) : Prop where
   included : DomainIncluded S rho b0 r
   prefix_scope : NamedRun.blockInRun S rho P
@@ -282,7 +352,7 @@ structure RoundInvariant (S : Setup V) (rho : NamedRun V) (b0 : Time)
       ∃ raw : Block V,
         (DecoupledConsensusModel.Protocol.readFrame n.cache n.st.core.toHealing r).g2 = some (some raw) ∧
         Block.Preceq P.erase raw
-  
+
   common_support : ∃ supportBoundary : Time, ∃ supportRound : Round,
     supportBoundary = min b0 (early S.E S.hc r .g2) ∧ supportRound ≤ r ∧
     (∀ v ∈ rho.honest,
@@ -296,6 +366,37 @@ structure RoundInvariant (S : Setup V) (rho : NamedRun V) (b0 : Time)
     ∀ B ∈ (checkpoint S rho v r).st.bodies, PriorCarrierRows S rho r B
   entry_history : IntrinsicHighEntryHistory S rho P r
   conflicting_band : IntrinsicConflictingCarrierBand S rho P r
+
+/-- The same SG, support and paper-checkpoint conclusions with causal
+history through the next G0 completion. The extra history includes current
+round actions before and after the paper instant (PROTOCOL.md `sec:grades`). -/
+structure RoundInvariant (S : Setup V) (rho : NamedRun V) (b0 : Time)
+    (P : NamedBlock V) (r : Round) : Prop where
+  included : DomainIncluded S rho b0 r
+  prefix_scope : NamedRun.blockInRun S rho P
+  sg : ∀ v ∈ rho.honest,
+    let n := NamedRun.readAt S rho (domain S.E S.hc r .g1) v
+    Block.Preceq P.erase n.st.core.F ∨
+      ∃ raw : Block V,
+        (DecoupledConsensusModel.Protocol.readFrame n.cache n.st.core.toHealing r).g2 = some (some raw) ∧
+        Block.Preceq P.erase raw
+
+  common_support : ∃ supportBoundary : Time, ∃ supportRound : Round,
+    supportBoundary = min b0 (early S.E S.hc r .g2) ∧ supportRound ≤ r ∧
+    (∀ v ∈ rho.honest,
+      S.hc.round_of (NamedRun.stateBeforeTime S rho supportBoundary v).st.core.s = supportRound) ∧
+    S.E.electorate.weightOf
+        ((Finset.univ \ rho.honest) ∪ commonStaleRisks S rho supportBoundary P supportRound r) <
+      S.E.electorate.weightOf (commonSupporters S rho supportBoundary P supportRound r)
+  fg : S.a r ≤ rho.horizon → ∀ v ∈ rho.honest, JointAt S rho P r v
+  source_history : WindowSignedSourceHistory S rho
+    (strictEventCut rho (domain S.E S.hc (r + 1) .g0))
+  old_rows : S.a r ≤ rho.horizon → ∀ v ∈ rho.honest,
+    ∀ B ∈ (checkpoint S rho v r).st.bodies, CheckpointCarrierRows S rho r B
+  entry_history : IntrinsicHighEntryHistoryIdx S rho P
+    (strictEventCut rho (domain S.E S.hc (r + 1) .g0))
+  conflicting_band : IntrinsicConflictingCarrierBandIdx S rho P
+    (strictEventCut rho (domain S.E S.hc (r + 1) .g0))
 
 end DecoupledConsensusModel.Internal.NamedJointOutage
 

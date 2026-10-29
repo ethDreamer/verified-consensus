@@ -141,7 +141,7 @@ theorem emitted_attestation_head_at_point (S : Setup V) (rho : NamedRun V)
 theorem emittedInRound_iff (S : Setup V) (rho : NamedRun V) (v : V) (k : Round) :
     emittedInRound S rho v k = true ↔
       ∃ a : NamedAttestation V, a.val_index = v ∧ a.round = k ∧
-        NamedRun.emits S rho v (.attest a) (S.a k) := by
+        NamedRun.emits S rho v (.attest a) ((S.node v).act k) := by
   constructor
   · intro h
     obtain ⟨i, _, hs⟩ := List.any_eq_true.mp h
@@ -151,7 +151,7 @@ theorem emittedInRound_iff (S : Setup V) (rho : NamedRun V) (v : V) (k : Round) 
       cases e with
       | deliver u o t => simp [he] at hs
       | tick u t =>
-        by_cases hg : u = v ∧ t = S.a k
+        by_cases hg : u = v ∧ t = (S.node v).act k
         · simp only [he, ite_eq_left hg] at hs
           obtain ⟨o, ho, hrow⟩ := List.any_eq_true.mp hs
           cases o with
@@ -173,8 +173,17 @@ theorem emittedInRound_iff (S : Setup V) (rho : NamedRun V) (v : V) (k : Round) 
 theorem honestRoundVoters_iff (S : Setup V) (rho : NamedRun V) (v : V) (k : Round) :
     v ∈ honestRoundVoters S rho k ↔ v ∈ rho.honest ∧
       ∃ a : NamedAttestation V, a.val_index = v ∧ a.round = k ∧
-        NamedRun.emits S rho v (.attest a) (S.a k) := by
+        NamedRun.emits S rho v (.attest a) ((S.node v).act k) := by
   simp only [honestRoundVoters, Finset.mem_filter, emittedInRound_iff]
+
+/-- The round-voter scan recovers its original paper-time meaning at the
+point instance (PROTOCOL.md `sec:healing-schedule`). -/
+theorem honestRoundVoters_iff_point (S : Setup V) (rho : NamedRun V)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r) (v : V) (k : Round) :
+    v ∈ honestRoundVoters S rho k ↔ v ∈ rho.honest ∧
+      ∃ a : NamedAttestation V, a.val_index = v ∧ a.round = k ∧
+        NamedRun.emits S rho v (.attest a) (S.a k) := by
+  rw [honestRoundVoters_iff, hpoint]
 
 private theorem window_bounds {eta r k : Nat} (hk : k ∈ Protocol.latest_window eta r) :
     r - eta ≤ k ∧ k < r := by

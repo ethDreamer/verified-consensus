@@ -346,16 +346,17 @@ private theorem scope_of_held_strict (S : Setup V) (rho : NamedRun V)
   exact Proofs.NamedRuntime.blockInRun_of_direct S rho
     (Proofs.NamedRuntime.directBlock_of_prefix S rho hreader i hD)
 
-/-! ## Causal entry history at the unchanged paper checkpoint.
+/-! ## Causal entry history at a strict time cut.
 
-Rows may belong to the checkpoint's own round. Their actual emission indices
-precede the strict paper-time cut, which bounds the compatibility history.
+Opening consumers supply G0 completion as the cut. Paper-checkpoint consumers
+supply the original `S.a r` and include current-round emissions there. The
+round label remains for callers; the event-prefix bound controls the proof.
 -/
 private theorem held_row_target_compatible (S : Setup V) (rho : NamedRun V)
-    (b0 b1 : Time) (r : Round) (Pn : NamedBlock V)
+    (b0 b1 : Time) (r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1)
-    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
-    (reader : V) (t : Time) (ht : t ≤ S.a r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut))
+    (reader : V) (t : Time) (ht : t ≤ cut)
     {D carrier X : NamedBlock V}
     (hD : D ∈ (NamedRun.stateBeforeTime S rho t reader).st.bodies)
     (hcarrier : NamedBlock.Preceq carrier D)
@@ -365,10 +366,10 @@ private theorem held_row_target_compatible (S : Setup V) (rho : NamedRun V)
     (hp : a.height_pair = .vote h root timeout)
     (hXscope : NamedRun.blockInRun S rho X) (hXroot : X.root = root) :
     NamedBlock.compatible Pn X = true := by
-  have hDr : D ∈ (NamedRun.stateBeforeTime S rho (S.a r) reader).st.bodies :=
+  have hDr : D ∈ (NamedRun.stateBeforeTime S rho cut reader).st.bodies :=
     bodies_time_mono S rho hexec.core.sorted reader ht hD
-  have hrows := (NamedCheckpointRows.prior_carrier_rows_at_checkpoint S rho
-    hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable reader r hDr).1
+  have hrows := NamedCheckpointRows.carrier_rows_before_time S rho
+    hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable reader cut hDr
   obtain ⟨i, hin, hi, hem⟩ := hrows carrier hcarrier a hrow ha
   obtain ⟨source, entry, hSigned, _hSourceHeight, hEntryRoot⟩ :=
     Proofs.NamedWindowIntrinsicEntry.emitted_height_signed_source_at S rho
@@ -386,11 +387,11 @@ private theorem held_row_target_compatible (S : Setup V) (rho : NamedRun V)
 /-! ## Justified, finalized and FG-root compatibility on `[b0, S.a r]`. -/
 
 private theorem justified_compatible_after_boundary (S : Setup V) (rho : NamedRun V)
-    (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
+    (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
-    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r) :
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut))
+    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ cut) :
     Block.compatible Pn.erase
       (NamedRun.stateBeforeTime S rho t reader).st.core.J = true := by
   obtain ⟨D, hD, hDJ, _⟩ :=
@@ -416,14 +417,14 @@ private theorem justified_compatible_after_boundary (S : Setup V) (rho : NamedRu
     simpa only [hJE, hDJ] using hraw
 
 /-- Despite the name this needs no boundary: `hentry` is the intrinsic
-whole-history premise, so the conclusion holds at EVERY read at or before round
-`r`'s action, including reads strictly before `b0`. -/
+whole-history premise, so the conclusion holds at every read at or before its
+causal cut, including reads strictly before `b0`. -/
 theorem finalized_compatible_after_boundary (S : Setup V) (rho : NamedRun V)
-    (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
+    (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
-    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r) :
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut))
+    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ cut) :
     Block.compatible Pn.erase
       (NamedRun.stateBeforeTime S rho t reader).st.core.F = true := by
   have hJ := justified_compatible_after_boundary S rho b0 b1 s r Pn hexec hmargin hsleep
@@ -439,11 +440,11 @@ theorem finalized_compatible_after_boundary (S : Setup V) (rho : NamedRun V)
     exact Or.inr (Block.preceq_trans hFJ hJP)
 
 private theorem fg_root_compatible_after_boundary (S : Setup V) (rho : NamedRun V)
-    (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
+    (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
-    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r) :
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut))
+    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ cut) :
     Block.compatible Pn.erase
       (Protocol.get_fg_root
         (NamedRun.stateBeforeTime S rho t reader).st.core.toHealing.toFG) = true := by
@@ -457,17 +458,17 @@ private theorem fg_root_compatible_after_boundary (S : Setup V) (rho : NamedRun 
 /-! ## The conflicting-carrier band at a post-boundary read. -/
 
 private theorem held_band_after_boundary (S : Setup V) (rho : NamedRun V)
-    (b0 b1 : Time) (r : Round) (Pn : NamedBlock V)
+    (b0 b1 : Time) (r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1)
-    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
-    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho cut))
+    (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ cut)
     {D : NamedBlock V} (hD : D ∈ (NamedRun.stateBeforeTime S rho t reader).st.bodies)
     (hConflict : NamedBlock.compatible Pn D = false) :
     (derive_named S.E S.cfg D).h ≤ (derive_named S.E S.cfg Pn).h + 1 := by
-  have hDr : D ∈ (NamedRun.stateBeforeTime S rho (S.a r) reader).st.bodies :=
+  have hDr : D ∈ (NamedRun.stateBeforeTime S rho cut reader).st.bodies :=
     bodies_time_mono S rho hexec.core.sorted reader ht hD
-  have hprior := (NamedCheckpointRows.prior_carrier_rows_at_checkpoint S rho
-    hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable reader r hDr).1
+  have hprior := NamedCheckpointRows.carrier_rows_before_time S rho
+    hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable reader cut hDr
   have hDscope := scope_of_held_strict S rho hexec.core.sorted reader hreader t hD
   exact hband D hDscope hprior hConflict
 
@@ -491,10 +492,10 @@ VIABLE ancestor of the round's frozen G2 root, and it carries `Pn` only when
 `Pn` is walkable at the writing node. The pre-boundary twin is
 `NamedFGProtection.viable_of_held_before_boundary`. -/
 theorem viable_after_boundary
-    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (r : Round) (Pn : NamedBlock V)
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1)
-    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
-    (w : V) (hw : w ∈ rho.honest) (t : Time) (ht : t ≤ S.a r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho cut))
+    (w : V) (hw : w ∈ rho.honest) (t : Time) (ht : t ≤ cut)
     (hheld : Pn ∈ (NamedRun.stateBeforeTime S rho t w).st.bodies)
     (hFP : Block.Preceq (NamedRun.stateBeforeTime S rho t w).st.core.F Pn.erase) :
     Pn.erase ∈ Protocol.V_tree
@@ -549,16 +550,16 @@ accountable bound and the pre-`b0` honest-behaviour guard do no work here.
 `hheld0` replaces `NamedBoundaryHolding.stable_prefix_held_at_boundary`, whose
 `stableAt` premise is not among this target's premises. -/
 theorem fg_noninterference_after_boundary
-    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1)
     (_hslash : Internal.NamedOutageEntry.SlashableBound S rho)
     (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
     (_hPn : NamedRun.blockInRun S rho Pn)
     (_hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
-    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho cut))
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut))
     (hheld0 : ∀ u ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 u).st.bodies)
-    (w : V) (hw : w ∈ rho.honest) (t : Time) (hb0 : b0 ≤ t) (ht : t ≤ S.a r) :
+    (w : V) (hw : w ∈ rho.honest) (t : Time) (hb0 : b0 ≤ t) (ht : t ≤ cut) :
     Pn ∈ (NamedRun.stateBeforeTime S rho t w).st.bodies ∧
     (Block.Preceq Pn.erase
        (Protocol.get_fg_root (NamedRun.stateBeforeTime S rho t w).st.core.toHealing.toFG) ∨
@@ -590,7 +591,7 @@ theorem fg_noninterference_after_boundary
 
 `NamedRun.readAt` keeps every event with `e.time <= t`, so it is the strict
 fold one unit later. The window therefore shortens by one at the top: the
-`readAt` form holds for `b0 <= t < S.a r` and NOT at `t = S.a r`, where the
+`readAt` form holds for `b0 <= t < cut` and NOT at `t = S.a r`, where the
 reader may already have processed the round-`r` action events that every
 checkpoint lemma excludes. -/
 private theorem readAt_eq_stateBeforeTime_succ (S : Setup V) (rho : NamedRun V) (t : Time) :
@@ -603,16 +604,16 @@ private theorem readAt_eq_stateBeforeTime_succ (S : Setup V) (rho : NamedRun V) 
   rw [hp]
 
 theorem fg_noninterference_after_boundary_readAt
-    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V) {cut : Time}
     (hexec : OutageExecution S rho b0 b1)
     (hslash : Internal.NamedOutageEntry.SlashableBound S rho)
     (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
     (hPn : NamedRun.blockInRun S rho Pn)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
-    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho cut))
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut))
     (hheld0 : ∀ u ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 u).st.bodies)
-    (w : V) (hw : w ∈ rho.honest) (t : Time) (hb0 : b0 ≤ t) (ht : t < S.a r) :
+    (w : V) (hw : w ∈ rho.honest) (t : Time) (hb0 : b0 ≤ t) (ht : t < cut) :
     Pn ∈ (NamedRun.readAt S rho t w).st.bodies ∧
     (Block.Preceq Pn.erase
        (Protocol.get_fg_root (NamedRun.readAt S rho t w).st.core.toHealing.toFG) ∨

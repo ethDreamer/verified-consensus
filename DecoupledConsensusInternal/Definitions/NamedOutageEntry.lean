@@ -20,7 +20,7 @@ def emittedInRound (S : Setup V) (rho : NamedRun V) (v : V) (k : Round) : Bool :
   (List.range rho.events.length).any (fun i =>
     match rho.events[i]? with
     | some (.tick u t) =>
-      if u = v ∧ t = S.a k then
+      if u = v ∧ t = (S.node v).act k then
         (NamedRun.emittedAt S rho i v t).any (fun o =>
           match o with
           | .attest a => decide (a.val_index = v ∧ a.round = k)

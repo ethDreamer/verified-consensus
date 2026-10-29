@@ -569,18 +569,18 @@ private theorem tick_le_clock_before_delivery (S : Setup V) (rho : NamedRun V)
 
 private theorem delivery_round (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) {i : Nat} {reader : V} {o : NamedObject V}
-    {td : Time} (q : Round) (he : rho.events[i]? = some (.deliver reader o td))
-    (hlo : S.a q ≤ td) (hhi : td < S.a q + S.E.Δ) :
+    {td : Time} (sender : V) (q : Round) (he : rho.events[i]? = some (.deliver reader o td))
+    (hlo : (S.node sender).act q ≤ td) (hhi : td < (S.node sender).act q + S.E.Δ) :
     S.hc.round_of (NamedRun.stateBefore S rho i reader).st.core.s = q := by
   have hmem := List.mem_of_getElem? he
   have hr : reader ∈ rho.honest := sch.honest_only _ hmem
-  have htick := sch.tick_total reader hr (S.a q) (Proofs.HealingLemmas.publicTime_a S q)
-    (Proofs.HealingLemmas.a_nonneg S q) (hlo.trans (sch.in_horizon _ hmem).2)
+  have htick := sch.tick_total reader hr ((S.node sender).act q) (S.act_public sender q)
+    (S.act_nonneg sender q) (hlo.trans (sch.in_horizon _ hmem).2)
   have hclock := tick_le_clock_before_delivery S rho sch he htick hlo
   have hup := Proofs.NamedRuntime.stateBefore_clock_le_event S rho sch.sorted he
     (sch.in_horizon _ hmem).1 reader
-  rw [stateBefore_slot_clock, Proofs.HealingLemmas.slotOf_of_between_a S q hclock (hup.trans_lt hhi),
-    Proofs.HealingLemmas.round_of_opening_succ]
+  rw [stateBefore_slot_clock]
+  exact S.round_of_between_act sender q hclock (hup.trans_lt hhi)
 
 private theorem tick_rows_after_proposal (gc : Protocol.GradeContract V) (S : Setup V)
     (nd : Protocol.Node V) (st : Protocol.NamedStore V)
@@ -655,7 +655,7 @@ private theorem actual_call_input (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) {i : Nat} {reader : V}
     {a : NamedAttestation V} {td : Time}
     (hcall : NamedRun.actualHandlesAt S rho i reader (.attest a) td)
-    (hlo : S.a a.round ≤ td) (hhi : td < S.a a.round + S.E.Δ) :
+    (hlo : (S.node a.val_index).act a.round ≤ td) (hhi : td < (S.node a.val_index).act a.round + S.E.Δ) :
     ∃ input : Protocol.NamedStore V, Proofs.NamedStore.Coherent S.E S.cfg input ∧ Data td input ∧
       S.hc.round_of input.core.s = a.round ∧
       ∀ b : NamedAttestation V,
@@ -694,7 +694,7 @@ private theorem actual_call_input (S : Setup V) (rho : NamedRun V)
       subst t
       refine ⟨(NamedRun.stateBefore S rho i reader).st,
         (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1.1.1,
-        (data_at_event S rho sch he reader).1, delivery_round S rho sch a.round he hlo hhi, ?_⟩
+        (data_at_event S rho sch he reader).1, delivery_round S rho sch a.val_index a.round he hlo hhi, ?_⟩
       intro b hb
       rw [Proofs.NamedReceiptCallsBase.delivery_result S rho he]
       exact hb
@@ -704,15 +704,14 @@ private theorem actual_call_input (S : Setup V) (rho : NamedRun V)
       · have ht : t = td := handle_event_time S rho hcall he
         subst t
         exact ⟨(Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1.1.1,
-          (data_at_event S rho sch he reader).1, delivery_round S rho sch a.round he hlo hhi⟩
+          (data_at_event S rho sch he reader).1, delivery_round S rho sch a.val_index a.round he hlo hhi⟩
       · have ht : t = td := handle_event_time S rho hcall he
         subst t
         refine ⟨NamedStore.coherent_clock S.E S.cfg _ td
           (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1.1.1,
           clock_data S td _ td le_rfl (data_at_event S rho sch he reader).1, ?_⟩
         change S.hc.round_of (S.E.slotOf td) = a.round
-        rw [Proofs.HealingLemmas.slotOf_of_between_a S a.round hlo hhi,
-          Proofs.HealingLemmas.round_of_opening_succ]
+        exact S.round_of_between_act a.val_index a.round hlo hhi
     let input := Execution.NamedReceiptCalls.f1Input S before B k
     have hcore := NamedStore.coherent_process_block S.E S.hc S.cfg before B hbefore.1
     have hcoh : Proofs.NamedStore.Coherent S.E S.cfg input :=
@@ -813,15 +812,18 @@ private theorem honest_row_after_input (S : Setup V) (rho : NamedRun V)
 generalised). Exposed for the delivery-to-pool wrapper in
 `NamedEmissionShape`: honesty plus the delivery window rule out every branch of
 the handler's guard,
-so no side condition reaches the caller. Statement unchanged. -/
+so no side condition reaches the caller. The interval is measured from the
+actual emission time. -/
 theorem honest_row_after_call (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
-    {i : Nat} {reader : V} {a : NamedAttestation V} {td : Time}
+    {i : Nat} {reader : V} {a : NamedAttestation V} {td sent : Time}
     (ha : a.val_index ∈ rho.honest)
-    (hem : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round))
+    (hem : NamedRun.emits S rho a.val_index (.attest a) sent)
     (hcall : NamedRun.actualHandlesAt S rho i reader (.attest a) td)
-    (hlo : S.a a.round ≤ td) (hhi : td < S.a a.round + S.E.Δ) :
+    (hlo : sent ≤ td) (hhi : td < sent + S.E.Δ) :
     a ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows a.round := by
+  have ht := (Proofs.WindowAction.run_emission_fields S hem).1
+  rw [ht] at hlo hhi
   obtain ⟨input, hcoh, hd, hround, hpost⟩ := actual_call_input S rho sch hcall hlo hhi
   exact honest_row_after_input S rho sch auth ha hem i reader input td hcoh hd hround hpost
 
@@ -963,10 +965,10 @@ private theorem post_index_le_strict_filter_length (rho : NamedRun V)
 
 theorem healthy_emitted_sg_at_next_g2_of_deadline (S : Setup V) (rho : NamedRun V)
     (b0 b1 : Time)
-    (hexec : OutageExecution S rho b0 b1) {a : NamedAttestation V}
+    (hexec : OutageExecution S rho b0 b1) {a : NamedAttestation V} {sent : Time}
     (ha : a.val_index ∈ rho.honest)
-    (hem : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round))
-    (hdead : S.a a.round + S.E.Δ ≤ b0) :
+    (hem : NamedRun.emits S rho a.val_index (.attest a) sent)
+    (hdead : sent + S.E.Δ ≤ b0) :
     ∀ reader ∈ rho.honest,
       let r := a.round + 1
       let n := NamedRun.stateBeforeTime S rho (DecoupledConsensusModel.Protocol.domain S.E S.hc r .g2) reader
@@ -982,7 +984,7 @@ theorem healthy_emitted_sg_at_next_g2_of_deadline (S : Setup V) (rho : NamedRun 
   let n := NamedRun.stateBeforeTime S rho cut reader
   have hdeadline := hdead
   obtain ⟨td, hlo, hhi, i, hcall⟩ :=
-    hexec.healthy.broadcast a.val_index ha (.attest a) (S.a a.round) hem
+    hexec.healthy.broadcast a.val_index ha (.attest a) sent hem
       reader hreader hdeadline rfl
   have hpost := honest_row_after_call S rho hexec.core.toNamedScheduleWellFormed
     hexec.core.toNamedUnforgeable ha hem hcall hlo hhi
@@ -991,7 +993,7 @@ theorem healthy_emitted_sg_at_next_g2_of_deadline (S : Setup V) (rho : NamedRun 
     simpa only [het] using (data_at_event S rho hexec.core.toNamedScheduleWellFormed he reader).2
   obtain ⟨_, stamp, hstampBound, hstamp⟩ := hdata.2 a.round a hpost
   have htdEarly : td < early := hhi.trans_le
-    (source_deadline_le_next_early S a.round S.hc.R_ge_three)
+    (by rw [(Proofs.WindowAction.run_emission_fields S hem).1]; exact S.act_pre_cutoff _ _)
   have htdCut : td < cut := htdEarly.trans_le (early_le_domain S r)
   have heCut : e.time < cut := by simpa only [het] using htdCut
   have hindex := post_index_le_strict_filter_length rho hexec.core.sorted cut he heCut

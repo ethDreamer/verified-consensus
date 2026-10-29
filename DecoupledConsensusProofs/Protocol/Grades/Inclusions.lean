@@ -14,7 +14,8 @@ public import DecoupledConsensusProofs.Protocol.Handlers.NonInterference
 
 and the `common_support` field needs the same inequality with
 `commonStaleRisks … sr r` on the left and `commonSupporters … sr r` on the
-right. The two theorems here are exactly that transfer. They are stated for an
+right. The two theorems here are exactly that transfer. Ready post-boundary
+rows use the derived `hpost` head floor. They are stated for an
 arbitrary support round `sr` with `s + 1 ≤ sr` and `opening sr ≤ b0`; the
 boundary round of `CommonSupportBase.lean` supplies both.
 -/
@@ -184,14 +185,14 @@ theorem finalized_le_at_g2_domain (S : Setup V) (rho : NamedRun V)
     (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (w : V) (hw : w ∈ rho.honest) (hneed : NeedsSG S rho Pn r w) :
     Block.Preceq
       (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.F Pn.erase :=
   finalized_le_of_needsSG S rho hexec.core.toNamedScheduleWellFormed r Pn w hneed
     (domain S.E S.hc r .g2) (incl_g2_le_opening_cut S r)
     (finalized_compatible_after_boundary S rho b0 b1 s r Pn hexec hmargin hsleep hentry w hw
-      (domain S.E S.hc r .g2) ((domain_le_opening S r).trans (incl_opening_le_a S r)))
+      (domain S.E S.hc r .g2) ((incl_g2_le_opening_cut S r).trans (S.opening_read_le_completion r)))
 
 /-! ## The stale inclusion -/
 
@@ -224,7 +225,7 @@ theorem stale_risks_subset_at (S : Setup V) (rho : NamedRun V)
     retained_trace S rho sch auth tau w sr u huh (latest_mem hx).1
   have hvote : u ∈ honestRoundVoters S rho x.round :=
     (Proofs.NamedOutageInputs.honestRoundVoters_iff S rho u x.round).mpr
-      ⟨huh, a, hval, haround, haround ▸ hem⟩
+      ⟨huh, a, hval, haround, by simpa only [haround, hval] using hem⟩
   have hqmem : sr - 1 ∈ Internal.OutageEntryRevision.retainedRounds S sr :=
     mem_retainedRounds S (sub_eta_le_pred sr S.hc.η_SG S.hc.η_SG_ge_one) (Nat.sub_le sr 1)
   have hopen' : opening S.E S.hc (sr - 1 + 1) ≤ tau := by
@@ -267,7 +268,7 @@ theorem rawInputs_localCovers (S : Setup V) (rho : NamedRun V)
     (roots : NamedRootCollisionFree S rho) (hR : 3 ≤ S.hc.R)
     (b0 : Time) (s r : Round) (Pn : NamedBlock V)
     (hconf : HonestConfirmedAtOrAbove S rho b0 s Pn.erase)
-    (hhead : HonestHeadHeldAbove S rho b0 s Pn.erase) (hfirst : S.a (r - 1) < b0)
+    (hhead : HonestHeadHeldAbove S rho b0 s Pn.erase) (hfirst : ∀ v, (S.node v).act (r - 1) < b0)
     (hpub : Execution.PublicTime S b0)
     (w : V) (hw : w ∈ rho.honest)
     (hFP : Block.Preceq
@@ -285,18 +286,23 @@ theorem rawInputs_localCovers (S : Setup V) (rho : NamedRun V)
     rawInputs_trace S rho sch auth (domain S.E S.hc r .g2) cutoff w S.hc.η_SG r u hu hz
   have hzr : z.round < r := (window_bounds hbwin).2
   have hbr : b.round < r := by rw [hbround]; exact hzr
-  have hlt : S.a b.round < b0 :=
-    lt_of_le_of_lt (Assembly.a_mono S (le_pred_of_lt b.round r hbr)) hfirst
+  have hlt : (S.node b.val_index).act b.round < b0 :=
+    lt_of_le_of_lt (by
+      rcases Nat.eq_or_lt_of_le (le_pred_of_lt b.round r hbr) with he | hl
+      · rw [he]
+      · exact ((S.act_before_round_end b.val_index b.round).trans_le
+          ((opening_mono S hl).trans (S.opening_le_act b.val_index (r - 1)))).le)
+      (hfirst b.val_index)
   have hbs : s ≤ b.round := by rw [hbround]; exact hzs
   obtain ⟨_, _, _, K, _, hkey⟩ := Proofs.NamedOutageInputs.emitted_attestation_head S rho hbem
-  have hdelta : S.a b.round + S.E.Δ ≤ b0 := a_add_delta_le_of_lt_public S b0 hpub b.round hlt
+  have hdelta : (S.node b.val_index).act b.round + S.E.Δ ≤ b0 := act_add_delta_le_of_lt_grid S b0 (onDeltaGrid_of_public S b0 hpub) b.val_index b.round hlt
   obtain ⟨H, hH, hroot, _, _⟩ :=
-    hhead b (S.a b.round) (hbval ▸ hu) (hbval ▸ hbem) hdelta hbs w hw (domain S.E S.hc r .g2)
-      ((action_delta_le_early S hR hbr).trans (early_le_domain S r)) hFP K.root hkey
+    hhead b ((S.node b.val_index).act b.round) (hbval ▸ hu) (hbval ▸ hbem) hdelta hbs w hw (domain S.E S.hc r .g2)
+      ((S.act_deadline_le_early b.val_index hbr).trans (early_le_domain S r)) hFP K.root hkey
   have hHrun : NamedRun.blockInRun S rho H :=
     held_blockInRun S rho sch w hw (domain S.E S.hc r .g2) hH
   have hcover : Block.Preceq Pn.erase H.erase :=
-    hconf b (S.a b.round) (hbval ▸ hu) (hbval ▸ hbem) hlt hbs K.root hkey H hHrun hroot
+    hconf b ((S.node b.val_index).act b.round) (hbval ▸ hu) (hbval ▸ hbem) hlt hbs K.root hkey H hHrun hroot
   have hfind : Block.find? (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.T
       H.root = some H.erase := by
     simpa only [Proofs.NamedWire.erase_root] using
@@ -309,6 +315,97 @@ theorem rawInputs_localCovers (S : Setup V) (rho : NamedRun V)
     | some head => Block.preceq Pn.erase head
     | none => false) = true
   rw [hfind]
+  exact hcover
+
+/-- A root that resolves at an honest reader's strict read resolves to a
+retained body, hence to a run block. This is the converse of
+`NamedHealthyHeadReady.held_find_at_strict`, and it is what lets the
+post-boundary premise, which speaks of run blocks, be applied to the reader's
+own lookup. -/
+private theorem incl_find_body_at_strict (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (reader : V) (hreader : reader ∈ rho.honest)
+    (t : Time) {key : BlockId} {Hb : Block V}
+    (hfind : Block.find? (NamedRun.stateBeforeTime S rho t reader).st.core.T key = some Hb) :
+    ∃ H : NamedBlock V, NamedRun.blockInRun S rho H ∧ H.erase = Hb ∧ H.root = key := by
+  obtain ⟨m, hread, _⟩ := Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho sch.sorted t
+  rw [hread] at hfind
+  have hcoh := (Proofs.NamedRuntime.stateBefore_invariants S rho m reader).1.1.1
+  have hmem : Hb ∈ (NamedRun.stateBefore S rho m reader).st.core.T :=
+    Proofs.HealingLemmas.find?_mem hfind
+  rw [hcoh.1] at hmem
+  obtain ⟨H, hH, hHe⟩ := Finset.mem_image.mp hmem
+  refine ⟨H, Proofs.NamedRuntime.blockInRun_of_direct S rho
+    (Proofs.NamedRuntime.directBlock_of_prefix S rho hreader m hH), hHe, ?_⟩
+  rw [← Proofs.NamedWire.erase_root H, hHe]
+  exact Proofs.HealingLemmas.find?_root hfind
+
+/-- Every body-ready input of an honest sender in round `r`'s window covers the
+protected prefix at an honest reader's round-`r` G2 store. The sender's row is
+either a pre-boundary emission (`hconf`) or a post-boundary emission of a round
+below `r` (`hpost`), and the reader's own resolution of the confirmed root
+comes from `bodyReady` itself, so `HonestHeadHeldAbove` is not consulted. This
+is the `hfirst`-free replacement for `Inclusions.rawInputs_localCovers`. -/
+theorem interpreted_localCovers (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    (b0 : Time) (s r : Round) (Pn : NamedBlock V)
+    (hconf : HonestConfirmedAtOrAbove S rho b0 s Pn.erase)
+    (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
+      NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →
+      ∀ key, a.confirmed = some key →
+        ∀ K : NamedBlock V, NamedRun.blockInRun S rho K → K.root = key →
+          Block.Preceq Pn.erase K.erase)
+    (w : V) (hw : w ∈ rho.honest) (u : V) (hu : u ∈ rho.honest) (cutoff : Time)
+    {z : Protocol.SGVote V}
+    (hz : z ∈ DecoupledConsensusModel.Protocol.interpretedInputs
+      (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.toHealing.gradeView
+      (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.F
+      S.hc.η_SG r cutoff u)
+    (hzs : s ≤ z.round) :
+    localCovers
+      (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.toHealing.gradeView
+      z.confirmed Pn.erase = true := by
+  obtain ⟨hzraw, hready⟩ := Finset.mem_filter.mp hz
+  obtain ⟨b, hbval, hbround, hbproj, hbwin, _hblt, hbem⟩ :=
+    rawInputs_trace S rho sch auth (domain S.E S.hc r .g2) cutoff w S.hc.η_SG r u hu hzraw
+  have hzr : z.round < r := (window_bounds hbwin).2
+  have hbr : b.round < r := by rw [hbround]; exact hzr
+  have hbs : s ≤ b.round := by rw [hbround]; exact hzs
+  obtain ⟨_, _, _, K, _, hkey⟩ := Proofs.NamedOutageInputs.emitted_attestation_head S rho hbem
+  have hzconf : z.confirmed = some K.root := by rw [← hbproj, sgVote_confirmed, hkey]
+  have hfindsome : ∃ Hb : Block V,
+      Block.find? (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.T K.root
+        = some Hb := by
+    cases hf : Block.find?
+        (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.T K.root with
+    | some Hb => exact ⟨Hb, rfl⟩
+    | none =>
+      exfalso
+      have hfalse : DecoupledConsensusModel.Protocol.bodyReady
+          (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.toHealing.gradeView
+          (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.F cutoff z
+            = false := by
+        simp only [DecoupledConsensusModel.Protocol.bodyReady, Protocol.HealingStore.gradeView,
+          Protocol.Store.toHealing, hzconf, hf]
+      rw [hfalse] at hready
+      exact absurd hready (by simp)
+  obtain ⟨Hb, hfind⟩ := hfindsome
+  obtain ⟨H, hHrun, hHe, hHroot⟩ :=
+    incl_find_body_at_strict S rho sch w hw (domain S.E S.hc r .g2) hfind
+  have hcover : Block.Preceq Pn.erase H.erase := by
+    by_cases hlt : (S.node b.val_index).act b.round < b0
+    · exact hconf b ((S.node b.val_index).act b.round) (hbval ▸ hu) (hbval ▸ hbem) hlt hbs K.root hkey H hHrun
+        hHroot
+    · exact hpost b ((S.node b.val_index).act b.round) (hbval ▸ hu) (hbval ▸ hbem) (not_lt.mp hlt) hbr
+        K.root hkey H hHrun hHroot
+  change Protocol.head_covers
+    (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.T Pn.erase z.confirmed
+      = true
+  rw [hzconf]
+  show (match Block.find?
+      (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.T K.root with
+    | some head => Block.preceq Pn.erase head
+    | none => false) = true
+  rw [hfind, ← hHe]
   exact hcover
 
 /-! ## The supporter inclusion -/
@@ -330,13 +427,17 @@ theorem voters_subset_supporters_at (S : Setup V) (rho : NamedRun V)
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho) (hPn : NamedRun.blockInRun S rho Pn)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hcutr : tau ≤ domain S.E S.hc r .g1 + 1)
     (hconf : HonestConfirmedAtOrAbove S rho b0 s Pn.erase)
     (hhead : HonestHeadHeldAbove S rho b0 s Pn.erase)
     (harr : HealthySGArrival S rho b0)
     (hlo : s + 1 ≤ sr) (hopen : opening S.E S.hc sr ≤ tau)
-    (hfirst : S.a (r - 1) < b0)
+    (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
+      NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →
+      ∀ key, a.confirmed = some key →
+        ∀ K : NamedBlock V, NamedRun.blockInRun S rho K → K.root = key →
+          Block.Preceq Pn.erase K.erase)
     (hwindow : sr - 1 ∈ Protocol.latest_window S.hc.η_SG r) :
     honestRoundVoters S rho (sr - 1) ⊆ commonSupporters S rho tau Pn sr r := by
   intro u hu
@@ -380,12 +481,9 @@ theorem voters_subset_supporters_at (S : Setup V) (rho : NamedRun V)
     -- This is what the boundary bound `b0 ≤ S.a r` supplies, and it is
     -- available on both sides of the boundary.
     have hylt : y.round < r := by
-      by_contra hcon
-      have hstep : S.a r ≤ S.a c.round :=
-        Assembly.a_mono S (by rw [hcround]; exact Nat.le_of_not_lt hcon)
-      have hcopen : S.a c.round ≤ domain S.E S.hc r .g1 :=
-        le_of_lt_succ_int _ _ (lt_of_lt_of_le hclt hcutr)
-      exact absurd hstep (not_le.mpr (lt_of_le_of_lt hcopen (opening_lt_action S r)))
+      rw [← hcround]
+      exact S.round_lt_of_act_lt_domain c.val_index
+        (hclt.trans_le (hcutr.trans (S.opening_read_le_completion r)))
     exact mem_latest_window (le_trans (window_bounds hwindow).1 (haround ▸ hyge)) hylt
   · refine staleAt_false_of_rounds_ge_at S rho sch auth roots b0 tau htau hgrid s Pn.erase hconf
       hhead w hw u huh hFPtau sr ?_
@@ -398,8 +496,8 @@ theorem voters_subset_supporters_at (S : Setup V) (rho : NamedRun V)
     have hcrlt : c.round < r := by rw [hcround]; exact hsrlt
     have hcready := retained_bodyReady S rho sch roots b0 s Pn.erase hhead w hw u huh hcval hcs
       hcdead hcem (domain S.E S.hc r .g2) (early S.E S.hc r .g2)
-      ((action_delta_le_early S hR hcrlt).trans (early_le_domain S r)) hFPdom
-      (action_delta_le_early S hR hcrlt)
+      ((S.act_deadline_le_early c.val_index hcrlt).trans (early_le_domain S r)) hFPdom
+      (S.act_deadline_le_early c.val_index hcrlt)
     have hcinterp : Protocol.sgVote c.erase ∈ DecoupledConsensusModel.Protocol.interpretedInputs
         (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.toHealing.gradeView
         (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.F
@@ -420,8 +518,8 @@ theorem voters_subset_supporters_at (S : Setup V) (rho : NamedRun V)
     · intro z hz
       obtain ⟨z', hz', rfl⟩ := Finset.mem_image.mp hz
       exact hymax _ hz'
-    · exact rawInputs_localCovers S rho sch auth roots hR b0 s r Pn hconf hhead hfirst
-        hexec.boundaryPublic w hw hFPdom u huh (early S.E S.hc r .g2) hyraw hys
+    · exact interpreted_localCovers S rho sch auth b0 s r Pn hconf hpost
+        w hw u huh (early S.E S.hc r .g2) hy hys
     · intro tx htx ty hty _ hround
       obtain ⟨x', hx', rfl⟩ := Finset.mem_image.mp htx
       obtain ⟨y', hy', rfl⟩ := Finset.mem_image.mp hty
@@ -440,8 +538,8 @@ theorem voters_subset_supporters_at (S : Setup V) (rho : NamedRun V)
       have hzraw : z' ∈ DecoupledConsensusModel.Protocol.rawInputs
           (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.toHealing.gradeView
           S.hc.η_SG r (late S.E S.hc r .g2) u := (Finset.mem_filter.mp hz').1
-      exact rawInputs_localCovers S rho sch auth roots hR b0 s r Pn hconf hhead hfirst
-        hexec.boundaryPublic w hw hFPdom u huh (late S.E S.hc r .g2) hzraw
+      exact interpreted_localCovers S rho sch auth b0 s r Pn hconf hpost
+        w hw u huh (late S.E S.hc r .g2) hz'
         (le_of_lt (lt_of_le_of_lt hys hltz))
 
 

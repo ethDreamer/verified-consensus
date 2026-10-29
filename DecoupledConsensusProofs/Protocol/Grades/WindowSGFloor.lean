@@ -147,6 +147,109 @@ theorem sg_above_of_frame (S : Setup V) (n : NamedNodeState V) (r : Round) (P : 
 #print axioms action_grade_geometry
 #print axioms sg_above_of_frame
 
+/-- The opening SG conclusion supplies the actual selector floor when
+strictly earlier causal entries preserve its FG projection (PROTOCOL.md `sec:grades`). -/
+theorem sg_floor_at_event_of_opening
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s : Round) (P : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
+    (hsleep : OutageSleepyThroughout S rho)
+    (hheld0 : ∀ v ∈ rho.honest, P ∈ (NamedRun.stateBeforeTime S rho b0 v).st.bodies)
+    {i : Nat} {a : NamedAttestation V}
+    (hh : IntrinsicHighEntryHistoryIdx S rho P i)
+    (ha : a.val_index ∈ rho.honest) (hr : 0 < a.round)
+    (hi : rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)))
+    (hem : NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+      ((S.node a.val_index).act a.round))
+    (hb : b0 ≤ (S.node a.val_index).act a.round)
+    (hopening : let n := NamedRun.readAt S rho (domain S.E S.hc a.round .g1) a.val_index
+      Block.Preceq P.erase n.st.core.F ∨
+        ∃ raw, (readFrame n.cache n.st.core.toHealing a.round).g2 = some (some raw) ∧
+          Block.Preceq P.erase raw) :
+    let n := NamedActionReads.windowActionReadFrom S a.val_index
+      (NamedRun.stateBefore S rho i a.val_index) a.round
+    Block.Preceq P.erase (currentSGVote n.st.core.toHealing
+      (frameGradeRead n.cache S.E S.hc n.st.core.toHealing a.round)) := by
+  obtain ⟨hfg, _, hframe⟩ := NamedStragglerEntryHistory.action_frame_of_opening
+    S rho b0 b1 s P hexec hmargin hsleep hheld0 hh ha hi hem hb hopening
+  obtain ⟨hclosed, hqanchor⟩ := action_grade_geometry S rho hexec.core ha hr hi hem
+  have hproj := NamedWindowIntrinsicEntry.emission_post_projection S rho hi hem
+  have hFroot := Records.preceq_get_fg_root_of_F
+    (st := (NamedRun.stateBefore S rho (i + 1) a.val_index).st.core.toHealing.toFG)
+    (NamedStoreBridge.finalized_preceq_justified_stateBefore S rho (i + 1) a.val_index)
+  change Block.Preceq (NamedRun.stateBefore S rho (i + 1) a.val_index).st.core.F
+    (get_fg_root (NamedRun.stateBefore S rho (i + 1) a.val_index).st.core.toHealing.toFG) at hFroot
+  rw [hproj.2.1, hproj.2.2.1] at hFroot
+  exact sg_above_of_frame S _ a.round P.erase hFroot hfg hframe hclosed hqanchor
+
+/-- Actual emitted heads inherit the opening SG floor. The history covers
+late actions as well as actions before the paper cut (PROTOCOL.md `sec:grades`). -/
+theorem confirmed_head_floor_of_opening
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s : Round) (P : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
+    (hsleep : OutageSleepyThroughout S rho)
+    (hheld0 : ∀ v ∈ rho.honest, P ∈ (NamedRun.stateBeforeTime S rho b0 v).st.bodies)
+    {a : NamedAttestation V} {t : Time}
+    (hhistory : IntrinsicHighEntryHistoryIdx S rho P
+      (strictEventCut rho (domain S.E S.hc (a.round + 1) .g0)))
+    (ha : a.val_index ∈ rho.honest) (hr : 0 < a.round)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) t) (hb : b0 ≤ t)
+    (hopening : let n := NamedRun.readAt S rho (domain S.E S.hc a.round .g1) a.val_index
+      Block.Preceq P.erase n.st.core.F ∨
+        ∃ raw, (readFrame n.cache n.st.core.toHealing a.round).g2 = some (some raw) ∧
+          Block.Preceq P.erase raw)
+    (key : BlockId) (hkey : a.confirmed = some key) (K : NamedBlock V)
+    (hK : NamedRun.blockInRun S rho K) (hKroot : K.root = key) :
+    Block.Preceq P.erase K.erase := by
+  obtain ⟨i, hi, hemit, hrow, _, hro, htime, _⟩ := WindowAction.run_emission_stages S rho hem
+  subst t
+  let n := NamedActionReads.windowActionReadFrom S a.val_index
+    (NamedRun.stateBefore S rho i a.val_index) a.round
+  let gc := NamedProfile.gradeContract n.cache
+  let Bsg := get_sg_vote_with gc S.E S.hc n.st.core.toHealing a.round
+    (grade2_block_with gc S.E S.hc n.st.core.toHealing a.round)
+  have hic := NamedStrictEventCut.lt_strictEventCut_of_time_lt rho hexec.core.sorted
+    (domain S.E S.hc (a.round + 1) .g0) hi
+    (NamedStragglerEntryHistory.action_before_completion_of_round_lt S a.val_index
+      (Nat.lt_succ_self a.round))
+  have hh : IntrinsicHighEntryHistoryIdx S rho P i := by
+    intro j hj b source entry ha hs
+    exact hhistory j (hj.trans hic) b source entry ha hs
+  have hfloor : Block.Preceq P.erase Bsg := sg_floor_at_event_of_opening S rho b0 b1 s P
+    hexec hmargin hsleep hheld0 hh ha hr hi hemit hb hopening
+  change (NamedDuties.attest_with gc S.E S.hc (S.node a.val_index) n.st n.record).2.2 = a at hrow
+  change a.round = S.hc.round_of n.st.core.s at hro
+  have hconf : a.confirmed = some Bsg.root := by
+    rw [← hrow]
+    change some (get_sg_vote_with gc S.E S.hc n.st.core.toHealing (S.hc.round_of n.st.core.s)
+      (grade2_block_with gc S.E S.hc n.st.core.toHealing (S.hc.round_of n.st.core.s))).root = _
+    rw [← hro]
+  have hkeyB : key = Bsg.root := Option.some.inj (hkey.symm.trans hconf)
+  have hinv : NamedConfirmationMembership.Invariant S.E S.cfg n.st :=
+    WindowAction.windowRead_invariant S a.val_index
+    (NamedRun.stateBefore S rho i a.val_index) ((S.node a.val_index).act a.round)
+    (NamedRuntime.stateBefore_invariants S rho i a.val_index).1
+  have hmem : Bsg ∈ n.st.core.T := by
+    have hm := NamedConfirmationMembership.sg_head_mem n.cache S.E S.hc S.cfg n.st hinv
+    rw [← hro] at hm
+    exact hm
+  rw [hinv.1.1.1] at hmem
+  obtain ⟨H, hH, hHe⟩ := Finset.mem_image.mp hmem
+  have hproj := NamedWindowIntrinsicEntry.emission_post_projection S rho hi hemit
+  have hHpost : H ∈ (NamedRun.stateBefore S rho (i + 1) a.val_index).st.bodies := by
+    rw [hproj.1]
+    exact hH
+  have hHrun := NamedRuntime.blockInRun_of_direct S rho
+    (NamedRuntime.directBlock_of_prefix S rho ha (i + 1) hHpost)
+  have hroot : H.root = K.root := by
+    rw [hKroot, hkeyB, ← hHe, NamedWire.erase_root]
+  have heq : H = K := hexec.core.root_injective H K hHrun hK H K
+    (Or.inl (NamedAncestry.named_self H)) (Or.inr (NamedAncestry.named_self K)) hroot
+  rw [← heq, hHe]
+  exact hfloor
+
+#print axioms sg_floor_at_event_of_opening
+#print axioms confirmed_head_floor_of_opening
+
 /-- The straggler SG floor is derived from the causal induction and the
 existing pre-boundary frames; it is not an outage premise. -/
 theorem straggler_sg_floor_at_event

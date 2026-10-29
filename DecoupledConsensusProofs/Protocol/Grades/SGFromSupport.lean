@@ -387,6 +387,15 @@ private theorem sg_a_add_delta_le_of_lt_public (S : Setup V) (b0 : Time)
   rw [ha, hb] at h ⊢
   exact sg_public_gap S.E.Δ _ _ S.E.Δ_pos h
 
+/-- P3 leaves a full delay between an actual action and a later public cut. -/
+private theorem sg_act_add_delta_le_of_lt_public (S : Setup V) (b0 : Time)
+    (hpub : Execution.PublicTime S b0) (v : V) (q : Round)
+    (h : (S.node v).act q < b0) : (S.node v).act q + S.E.Δ ≤ b0 := by
+  obtain ⟨k, hk⟩ := hpub
+  obtain ⟨m, hm⟩ := S.act_public v q
+  rw [hm, hk, mul_comm (m : Time), mul_comm (k : Time)] at h ⊢
+  exact sg_public_gap S.E.Δ _ _ S.E.Δ_pos h
+
 /-- A round strictly below `r` has its whole action before round `r`'s opening:
 `a_q = 4Δ·os(q) + 6Δ` and `os(q) + 3 ≤ os(r)` for `R ≥ 3`. This replaces the
 horizon step `S.a q ≤ S.a r ≤ rho.horizon`, which `DomainIncluded` does not
@@ -780,7 +789,7 @@ private theorem sg_honest_held_row_before_cut (S : Setup V) (rho : NamedRun V)
     (cut : Time) (reader : V) {a : NamedAttestation V}
     (ha : a ∈ (NamedRun.stateBeforeTime S rho cut reader).st.sg_rows a.round)
     (hHon : a.val_index ∈ rho.honest) :
-    S.a a.round < cut ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+    (S.node a.val_index).act a.round < cut ∧ NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨i, hread, hbefore⟩ := Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho sch.sorted cut
   rw [hread] at ha
   obtain ⟨j, hj, t, hacc, hsend, hem⟩ :=
@@ -916,26 +925,21 @@ before the cut, the strict read's clock is at or past it, so its round is at
 least `q`. This is what puts a traced row's round inside `retainedRounds`. -/
 private theorem sg_round_le_clock_round (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) (cut : Time) (reader : V)
-    (hreader : reader ∈ rho.honest) (q : Round) (hq : S.a q < cut)
-    (hhor : S.a q ≤ rho.horizon) :
+    (hreader : reader ∈ rho.honest) (sender : V) (q : Round) (hq : (S.node sender).act q < cut)
+    (hhor : (S.node sender).act q ≤ rho.horizon) :
     q ≤ S.hc.round_of (NamedRun.stateBeforeTime S rho cut reader).st.core.s := by
-  have hpublic : PublicTime S (S.a q) := by
-    refine ⟨4 * S.hc.opening_slot q + 6, ?_⟩
-    rw [sg_a_eq]
-    push_cast
-    ring
-  have hnonneg : (0 : Time) ≤ S.a q :=
-    (Proofs.Optimistic.proposal_time_nonneg S.E (S.hc.opening_slot q)).trans (sg_opening_le_a S q)
-  have htick : NamedEvent.tick reader (S.a q) ∈ rho.events :=
-    sch.tick_total reader hreader (S.a q) hpublic hnonneg hhor
-  have hfiltered : NamedEvent.tick reader (S.a q) ∈
+  have hpublic := S.act_public sender q
+  have hnonneg := S.act_nonneg sender q
+  have htick : NamedEvent.tick reader ((S.node sender).act q) ∈ rho.events :=
+    sch.tick_total reader hreader ((S.node sender).act q) hpublic hnonneg hhor
+  have hfiltered : NamedEvent.tick reader ((S.node sender).act q) ∈
       rho.events.filter (fun e => decide (e.time < cut)) :=
     List.mem_filter.mpr ⟨htick, decide_eq_true hq⟩
-  have hclock : S.a q ≤ (NamedRun.stateBeforeTime S rho cut reader).st.core.t :=
+  have hclock : (S.node sender).act q ≤ (NamedRun.stateBeforeTime S rho cut reader).st.core.t :=
     sg_tick_mem_le_strict_clock S rho sch hfiltered
   have hslot : S.hc.opening_slot q ≤
       S.E.slotOf (NamedRun.stateBeforeTime S rho cut reader).st.core.t :=
-    Protocol.slot_le_slotOf_of_proposal_time_le S.E ((sg_opening_le_a S q).trans hclock)
+    Protocol.slot_le_slotOf_of_proposal_time_le S.E ((S.opening_le_act sender q).trans hclock)
   have hmono := sg_round_of_mono S.hc hslot
   rw [sg_round_of_opening] at hmono
   simpa only [sg_stateBeforeTime_slot_clock S rho sch cut reader] using hmono
@@ -1038,7 +1042,7 @@ private theorem sg_rawInputs_trace (S : Setup V) (rho : NamedRun V)
       (NamedRun.stateBeforeTime S rho cut reader).st.core.toHealing.gradeView eta r cutoff u) :
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = y.round ∧
       Protocol.sgVote a.erase = y ∧ y.round ∈ Protocol.latest_window eta r ∧
-      S.a a.round < cut ∧ NamedRun.emits S rho u (.attest a) (S.a a.round) := by
+      (S.node a.val_index).act a.round < cut ∧ NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨hpool, hfields⟩ := Finset.mem_filter.mp hy
   obtain ⟨k, hk, hyk⟩ := Finset.mem_biUnion.mp hpool
   obtain ⟨a, hround, hproj, hmem⟩ := sg_pool_token_row S rho sch cut reader hyk
@@ -1061,8 +1065,8 @@ private theorem sg_retained_trace (S : Setup V) (rho : NamedRun V)
     (hx : x ∈ Internal.OutageEntryRevision.retainedRaw S
       (NamedRun.stateBeforeTime S rho cut reader).st.core sr cut u) :
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = x.round ∧
-      Protocol.sgVote a.erase = x ∧ S.a a.round < cut ∧
-      NamedRun.emits S rho u (.attest a) (S.a a.round) ∧
+      Protocol.sgVote a.erase = x ∧ (S.node a.val_index).act a.round < cut ∧
+      NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) ∧
       a ∈ (NamedRun.stateBeforeTime S rho cut reader).st.sg_rows a.round := by
   obtain ⟨hpool, hfields⟩ := Finset.mem_filter.mp hx
   obtain ⟨k, hk, hxk⟩ := Finset.mem_biUnion.mp hpool
@@ -1161,7 +1165,7 @@ private theorem sg_interpreted_covers (S : Setup V) (rho : NamedRun V)
       (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.toHealing.gradeView
       (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.F
       S.hc.η_SG r cutoff u)
-    (hzs : S.a z.round < b0 → s ≤ z.round) :
+    (hzs : (S.node u).act z.round < b0 → s ≤ z.round) :
     localCovers
       (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.toHealing.gradeView
       z.confirmed Pn.erase = true := by
@@ -1194,12 +1198,12 @@ private theorem sg_interpreted_covers (S : Setup V) (rho : NamedRun V)
   have hHrun : NamedRun.blockInRun S rho H :=
     sg_held_blockInRun S rho sch w hw (domain S.E S.hc r .g2) hHmem
   have hcover : Block.Preceq Pn.erase H.erase := by
-    by_cases hlt : S.a b.round < b0
-    · refine hconf b (S.a b.round) (hbval ▸ hu) (hbval ▸ hbem) hlt ?_ K.root hkey H hHrun
+    by_cases hlt : (S.node b.val_index).act b.round < b0
+    · refine hconf b ((S.node b.val_index).act b.round) (hbval ▸ hu) (hbval ▸ hbem) hlt ?_ K.root hkey H hHrun
         hHroot
       rw [hbround]
-      exact hzs (by rw [← hbround]; exact hlt)
-    · exact hpost b (S.a b.round) (hbval ▸ hu) (hbval ▸ hbem) (not_lt.mp hlt) hbr
+      exact hzs (by rw [← hbround, ← hbval]; exact hlt)
+    · exact hpost b ((S.node b.val_index).act b.round) (hbval ▸ hu) (hbval ▸ hbem) (not_lt.mp hlt) hbr
         K.root hkey H hHrun hHroot
   change Protocol.head_covers
     (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) w).st.core.T Pn.erase z.confirmed
@@ -1232,11 +1236,11 @@ The first arm produces a body-ready token `x` of `u` in the reader's late view
 that does not cover the prefix and whose round dominates every token of the
 reader's **early** view. Trace `x` back to the honest emission `a`:
 
-1. `b0 ≤ S.a a.round`: `hpost` applies and `x` covers — no opponent.
-2. `S.a a.round < b0` and `s ≤ a.round`: `hconf`'s sender clause applies and `x`
+1. `b0 ≤ (S.node a.val_index).act a.round`: `hpost` applies and `x` covers — no opponent.
+2. `(S.node a.val_index).act a.round < b0` and `s ≤ a.round`: `hconf`'s sender clause applies and `x`
    covers — no opponent.
-3. `S.a a.round < b0` and `a.round < s`: the row's healthy deadline
-   `S.a a.round + Δ` is at or before **both** `b0` (formation margin) and
+3. `(S.node a.val_index).act a.round < b0` and `a.round < s`: the row's healthy deadline
+   `(S.node a.val_index).act a.round + Δ` is at or before **both** `b0` (formation margin) and
    `early S.E S.hc r.g2` (schedule gap), hence at or before `tau`. So the row
    is already in the reader's store at `tau`, inside `retainedRounds`, and the
    inventory is nonempty. Its maximal element `m` either has `x`'s own round —
@@ -1259,7 +1263,7 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
     (hexec : OutageExecution S rho b0 b1)
     (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hslt : s < r) (hhor : domain S.E S.hc r .g1 ≤ rho.horizon)
     (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
       NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →
@@ -1293,8 +1297,10 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
   -- a support grade at all, contradicting `hneed`.
   have hFPdom : Block.Preceq
       (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) v).st.core.F Pn.erase := by
-    have hdomle : domain S.E S.hc r .g2 ≤ S.a r :=
-      (sg_domain_le_opening S r).trans (sg_opening_le_a S r)
+    have hdomle : domain S.E S.hc r .g2 ≤ domain S.E S.hc r .g0 := by
+      have hd := S.E.Δ_pos
+      simp only [domain, Phase.domainOffset]
+      linarith
     have hPF := finalized_compatible_after_boundary S rho b0 b1 s r Pn
       hexec hmargin hsleep hentry v hv (domain S.E S.hc r .g2) hdomle
     rcases (show Block.Preceq Pn.erase (NamedRun.stateBeforeTime S rho
@@ -1323,17 +1329,19 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
         S.hc.η_SG r u hu hzraw
     have hzr : z.round < r := (sg_window_bounds hwin).2
     have hzlo : r - S.hc.η_SG ≤ z.round := (sg_window_bounds hwin).1
-    by_cases hcase : S.a z.round < b0 → s ≤ z.round
+    by_cases hcase : (S.node u).act z.round < b0 → s ≤ z.round
     · exact absurd (sg_interpreted_covers S rho sch auth b0 s r Pn hconf.1 hpost v hv u hu
         (late S.E S.hc r .g2) hz hcase) hncov
     · push Not at hcase
       obtain ⟨hltb0, hnotle⟩ := hcase
       have hars : a.round < s := by rw [har]; exact hnotle
-      have hdb0 : S.a a.round + S.E.Δ ≤ b0 :=
-        sg_action_deadline S b0 s a.round hR hmargin (Nat.le_of_lt hars)
-      have hde : S.a a.round + S.E.Δ ≤ early S.E S.hc r .g2 :=
-        sg_action_delta_le_early S hR (Nat.lt_trans hars hslt)
-      have hdtau : S.a a.round + S.E.Δ ≤ tau := by
+      have hdb0 : (S.node a.val_index).act a.round + S.E.Δ ≤ b0 :=
+        le_trans (le_of_lt (S.act_deadline_lt_next_a a.val_index a.round))
+          ((sg_a_mono S (Nat.succ_le_succ (Nat.le_of_lt hars))).trans
+            (sg_le_of_add_le _ _ _ S.E.Δ_pos hmargin))
+      have hde : (S.node a.val_index).act a.round + S.E.Δ ≤ early S.E S.hc r .g2 :=
+        S.act_deadline_le_early a.val_index (Nat.lt_trans hars hslt)
+      have hdtau : (S.node a.val_index).act a.round + S.E.Δ ≤ tau := by
         rw [htau]; exact le_min hdb0 hde
       have hnext_e : domain S.E S.hc (a.round + 1) .g2 ≤ early S.E S.hc r .g2 :=
         sg_domain_le_early S hR (sg_nat_succ_lt _ _ _ hars hslt)
@@ -1346,8 +1354,8 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
       have hnext_tau : domain S.E S.hc (a.round + 1) .g2 ≤ tau := by
         rw [htau]; exact le_min hnext_b0 hnext_e
       have hahon : a.val_index ∈ rho.honest := by rw [hav]; exact hu
-      have haem' : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
-        rw [hav]; exact haem
+      have haem' : NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
+        simpa only [hav] using haem
       obtain ⟨hrow, hstampnext, -⟩ :=
         Proofs.NamedSGArrival.healthy_emitted_sg_at_next_g2_of_deadline S rho b0 b1 hexec
           hahon haem' hdb0 v hv
@@ -1365,11 +1373,12 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
       have hsgv : Protocol.sgVote a.erase ∈
           (NamedRun.stateBeforeTime S rho tau v).st.core.toHealing.gradeView.sg_votes a.round :=
         Finset.mem_image_of_mem Protocol.sgVote hpool
-      have halttau : S.a a.round < tau := sg_lt_of_add_le _ _ _ S.E.Δ_pos hdtau
-      have hahor : S.a a.round ≤ rho.horizon :=
-        (sg_a_le_domain_g1 S hR (by rw [har]; exact hzr)).trans hhor
+      have halttau : (S.node a.val_index).act a.round < tau := sg_lt_of_add_le _ _ _ S.E.Δ_pos hdtau
+      have hahor : (S.node a.val_index).act a.round ≤ rho.horizon :=
+        (hexec.core.in_horizon _ (List.mem_iff_getElem?.mpr
+          ⟨haem'.choose, haem'.choose_spec.1⟩)).2
       have hround_le : a.round ≤ supportRound := by
-        have hcl := sg_round_le_clock_round S rho sch tau v hv a.round halttau hahor
+        have hcl := sg_round_le_clock_round S rho sch tau v hv a.val_index a.round halttau hahor
         rw [hclock] at hcl
         exact hcl
       have hretr : z.round ∈ Internal.OutageEntryRevision.retainedRounds S supportRound :=
@@ -1418,9 +1427,12 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
         · obtain ⟨c, hcv, hcr, hcp, hclt, hcem, hcrow⟩ :=
             sg_retained_trace S rho sch auth tau v supportRound u hu hm
           have hmr : m.round < r := by
-            refine sg_round_lt_of_a_le_early S ?_
             rw [← hcr]
-            exact le_of_lt (lt_of_lt_of_le hclt htau_e)
+            apply S.round_lt_of_act_lt_domain c.val_index
+            apply hclt.trans_le (htau_e.trans ?_)
+            have hd := S.E.Δ_pos
+            simp only [early, domain, Phase.earlyOffset, Phase.domainOffset]
+            linarith
           have hmwin : m.round ∈ Protocol.latest_window S.hc.η_SG r :=
             sg_mem_latest_window (hzlo.trans (Nat.le_of_lt hlt)) hmr
           obtain ⟨hcrowr, hcstampeq⟩ := sg_strict_sg_row_carry S rho sch v htau_dom hcrow
@@ -1461,11 +1473,11 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
                 Proofs.NamedOutageInputs.emitted_attestation_head S rho hcem
               have hcs : s ≤ c.round := by rw [hcr]; exact hms
               obtain ⟨H, hH, hHroot, hHcompat, hHstamp⟩ :=
-                hconf.2 c (S.a c.round) (hcv ▸ hu) (hcv ▸ hcem)
-                  (sg_a_add_delta_le_of_lt_public S b0 hexec.boundaryPublic c.round
+                hconf.2 c ((S.node c.val_index).act c.round) (hcv ▸ hu) (hcv ▸ hcem)
+                  (sg_act_add_delta_le_of_lt_public S b0 hexec.boundaryPublic c.val_index c.round
                     (hclt.trans_le htau_b0)) hcs
                   v hv (domain S.E S.hc r .g2)
-                  ((sg_action_delta_le_early S hR (by rw [hcr]; exact hmr)).trans
+                  ((S.act_deadline_le_early c.val_index (by rw [hcr]; exact hmr)).trans
                     (sg_early_le_domain S r))
                   hFPdom K.root hkey
               have hmconf : m.confirmed = some H.root := by
@@ -1478,7 +1490,7 @@ private theorem sg_opposition_contained (S : Setup V) (rho : NamedRun V) (b0 b1 
                 Protocol.Store.toHealing, hmconf, hfindH]
               exact Bool.and_eq_true_iff.mpr
                 ⟨hHstamp (early S.E S.hc r .g2)
-                  (sg_action_delta_le_early S hR (by rw [hcr]; exact hmr)), hHcompat⟩
+                  (S.act_deadline_le_early c.val_index (by rw [hcr]; exact hmr)), hHcompat⟩
             unfold Internal.OutageEntryRevision.covers at hmcov
             rcases Option.eq_none_or_eq_some m.confirmed with hk | ⟨key, hk⟩
             · rw [hk] at hmcov
@@ -1601,8 +1613,8 @@ private theorem sg_protected_in_grade_tree (S : Setup V) (rho : NamedRun V)
     (hPn : NamedRun.blockInRun S rho Pn)
     (hsr : s < r)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hband : IntrinsicConflictingCarrierBand S rho Pn r)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hheld0 : ∀ w ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 w).st.bodies)
     (w0 : V) (hw0 : w0 ∈ rho.honest)
     (hseed : OutputSeed S rho b0 s Pn.erase)
@@ -1618,7 +1630,7 @@ private theorem sg_protected_in_grade_tree (S : Setup V) (rho : NamedRun V)
   · exact Finset.mem_image.mpr ⟨Pn,
       (fg_noninterference_after_boundary S rho b0 b1 s r Pn hexec hslash hmargin
         hsleep hPn hno hband hentry hheld0 v hv _ hb0
-        (le_of_lt (sg_action_after_g2 S r))).1, rfl⟩
+        (by have hd := S.E.Δ_pos; simp only [domain, Phase.domainOffset]; linarith)).1, rfl⟩
   · obtain ⟨Pm, hPmE, -, hheld⟩ := NamedEarlyHolding.stable_prefix_held_before_boundary_of_seed
       S rho b0 b1 hexec hsleep w0 hw0 s Pn.erase hmargin hseed hno
       (domain S.E S.hc r .g2)
@@ -1705,8 +1717,8 @@ theorem sg_at_domain_read_of_common_support_at
     (hrpos : 0 < r) (hsr : s < r) (hopenhor : domain S.E S.hc r .g1 ≤ rho.horizon)
     (hmargin : FormationMargin S s b0)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hband : IntrinsicConflictingCarrierBand S rho Pn r)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hheld0 : ∀ w ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 w).st.bodies)
     (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
       NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →
@@ -1753,7 +1765,7 @@ theorem sg_at_domain_read_of_common_support_at
     have hF : Block.compatible Pn.erase
         (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g1 + 1) v).st.core.F = true :=
       finalized_compatible_after_boundary S rho b0 b1 s r Pn hexec hmargin hsleep hentry v hv
-        (domain S.E S.hc r .g1 + 1) (sg_opening_cut_le_a S r)
+        (domain S.E S.hc r .g1 + 1) (S.opening_read_le_completion r)
     obtain ⟨raw0, hfreeze, hPraw0⟩ := sg_freeze_of_graded S.E
       (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) v).st.core.toHealing.gradeView
       (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) v).st.core.F S.hc.η_SG r
@@ -1794,8 +1806,8 @@ theorem sg_at_domain_read_of_common_support
     (hr : DomainIncluded S rho b0 r)
     (hmargin : FormationMargin S s b0)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hband : IntrinsicConflictingCarrierBand S rho Pn r)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (domain S.E S.hc r .g0)))
     (hheld0 : ∀ w ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 w).st.bodies)
     (hpost : ∀ (a : NamedAttestation V) (t : Time), a.val_index ∈ rho.honest →
       NamedRun.emits S rho a.val_index (.attest a) t → b0 ≤ t → a.round < r →

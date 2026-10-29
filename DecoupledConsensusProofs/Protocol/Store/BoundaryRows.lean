@@ -109,8 +109,8 @@ theorem vote_row_at_cut (S : Setup V) (rho : NamedRun V)
     (hcutoff : early S.E S.hc (q + 1) .g2 ≤ cutoff)
     (reader : V) (hreader : reader ∈ rho.honest) :
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = q ∧
-      NamedRun.emits S rho u (.attest a) (S.a a.round) ∧
-      S.a a.round + S.E.Δ ≤ b0 ∧
+      NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) ∧
+      (S.node a.val_index).act a.round + S.E.Δ ≤ b0 ∧
       Protocol.sgVote a.erase ∈
         (NamedRun.stateBeforeTime S rho cut reader).st.core.toHealing.gradeView.sg_votes a.round ∧
       occurrenceBefore ((NamedRun.stateBeforeTime S rho cut reader).st.core.timestamp_sg_vote
@@ -119,8 +119,8 @@ theorem vote_row_at_cut (S : Setup V) (rho : NamedRun V)
     (Proofs.NamedOutageInputs.honestRoundVoters_iff S rho u q).mp hu
   subst haround
   subst hval
-  have hdeadline : S.a a.round + S.E.Δ ≤ b0 :=
-    ((source_deadline_le_next_early S a.round hR).trans (early_le_opening S (a.round + 1))).trans
+  have hdeadline : (S.node a.val_index).act a.round + S.E.Δ ≤ b0 :=
+    ((S.act_pre_cutoff a.val_index a.round).trans (early_le_opening S (a.round + 1))).trans
       hopen
   obtain ⟨hrow, hstamp⟩ := harr a huh hem hdeadline reader hreader
   obtain ⟨hrowcut, hstampeq⟩ := strict_sg_row_carry S rho sch reader hcut hrow
@@ -147,18 +147,18 @@ theorem retained_mem_of_vote_at (S : Setup V) (rho : NamedRun V)
     (tau : Time) (htau : tau ≤ b0) (hopen : opening S.E S.hc (q + 1) ≤ tau)
     (reader : V) (hreader : reader ∈ rho.honest) :
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = q ∧
-      NamedRun.emits S rho u (.attest a) (S.a a.round) ∧
-      S.a a.round + S.E.Δ ≤ tau ∧
+      NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) ∧
+      (S.node a.val_index).act a.round + S.E.Δ ≤ tau ∧
       Protocol.sgVote a.erase ∈ Internal.OutageEntryRevision.retainedRaw S
         (NamedRun.stateBeforeTime S rho tau reader).st.core sr tau u := by
-  have hdeadtau : S.a q + S.E.Δ ≤ tau :=
-    ((source_deadline_le_next_early S q hR).trans (early_le_opening S (q + 1))).trans hopen
+  have hdeadtau : (S.node u).act q + S.E.Δ ≤ tau :=
+    ((S.act_pre_cutoff u q).trans (early_le_opening S (q + 1))).trans hopen
   obtain ⟨a, hval, haround, hem, _, hsg, hstamp⟩ :=
     vote_row_at_cut S rho sch harr hR q u hu (hopen.trans htau) tau tau
       ((domain_le_opening S (q + 1)).trans hopen)
       (((early_le_domain S (q + 1)).trans (domain_le_opening S (q + 1))).trans hopen)
       reader hreader
-  refine ⟨a, hval, haround, hem, by rw [haround]; exact hdeadtau, ?_⟩
+  refine ⟨a, hval, haround, hem, by rw [haround, hval]; exact hdeadtau, ?_⟩
   exact Finset.mem_filter.mpr
     ⟨Finset.mem_biUnion.mpr ⟨a.round, haround ▸ hq, hsg⟩, hval ▸ rfl, hstamp⟩
 
@@ -170,8 +170,8 @@ theorem retained_mem_of_vote (S : Setup V) (rho : NamedRun V)
     (hopen : opening S.E S.hc (q + 1) ≤ b0)
     (reader : V) (hreader : reader ∈ rho.honest) :
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = q ∧
-      NamedRun.emits S rho u (.attest a) (S.a a.round) ∧
-      S.a a.round + S.E.Δ ≤ b0 ∧
+      NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) ∧
+      (S.node a.val_index).act a.round + S.E.Δ ≤ b0 ∧
       Protocol.sgVote a.erase ∈ Internal.OutageEntryRevision.retainedRaw S
         (NamedRun.stateBeforeTime S rho b0 reader).st.core sr b0 u :=
   retained_mem_of_vote_at S rho sch harr hR sr q u hu hq b0 le_rfl hopen reader hreader
@@ -184,8 +184,8 @@ theorem rawInputs_mem_of_vote (S : Setup V) (rho : NamedRun V)
     (hopen : opening S.E S.hc (q + 1) ≤ b0)
     (reader : V) (hreader : reader ∈ rho.honest) :
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = q ∧
-      NamedRun.emits S rho u (.attest a) (S.a a.round) ∧
-      S.a a.round + S.E.Δ ≤ b0 ∧
+      NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) ∧
+      (S.node a.val_index).act a.round + S.E.Δ ≤ b0 ∧
       Protocol.sgVote a.erase ∈ DecoupledConsensusModel.Protocol.rawInputs
         (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) reader).st.core.toHealing.gradeView
         S.hc.η_SG r (early S.E S.hc r .g2) u := by
