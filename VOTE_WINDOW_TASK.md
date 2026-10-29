@@ -182,6 +182,32 @@ existing instantiations go through unchanged; check this explicitly. Record
 the restatement and the example in `docs/MODELING_CHOICES.md` and handle the
 diagnostic per the standing rule.
 
+*Resolution of the Stage 2 first-included-round question (2026-10-29)*: for
+the below-cutoff base in `StableCoverageConsumer`, keep `b0` and the
+selection (`r` minimal positive with `b0 ≤ S.a r`) fixed, and replace the
+all-rounds vacuity with a two-part classification. First prove the
+structural lemma that the window's late edge of round `q` strictly precedes
+round `q+1`'s paper instant: P2 bounds every action of round `q` by
+`T_{q+1} − 6Δ`, while `hc.a (q+1) ≥ T_{q+1}` by definition. Chained with
+the selection's minimality (`S.a q < b0` for positive `q < r`), this gives
+part (i): every action of every round up to `r−2` is strictly before `b0` —
+the old vacuity, recovered for all but one round. Part (ii) is direct P2:
+any round-`(r−1)` action at or after `b0` is delivered before round `r`'s
+early G2 cutoff, i.e. before the first grade evaluation the inductive step
+performs. Rebase `roundInvariant_base'` on this classification: rounds
+`≤ r−2` contribute nothing at or after `b0`, and round-`(r−1)` stragglers
+are handed to the step as in-flight deliveries that the round-`r` grade
+reasoning counts exactly as it counts timely round-`(r−1)` support —
+graded delivery already absorbs them; additional honest support must never
+weaken a coverage invariant. The point instance must again recover the old
+base: under `act = S.a`, round `r−1` has no stragglers (`S.a (r−1) < b0`),
+so part (ii) is vacuous and the original argument goes through; check this
+explicitly. If the coverage induction genuinely cannot absorb straggler
+support — if extra honest round-`(r−1)` arrivals before the cutoff break
+the invariant — stop and report it as a finding, since that would be a
+substantive discovery about healing under the window, not plumbing. Record
+the classification and the example in `docs/MODELING_CHOICES.md` as before.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
