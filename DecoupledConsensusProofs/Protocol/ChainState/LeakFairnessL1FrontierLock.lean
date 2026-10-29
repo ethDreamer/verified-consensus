@@ -16,6 +16,7 @@ public import DecoupledConsensusProofs.Execution.NamedAncestry
 public import DecoupledConsensusProofs.Protocol.Handlers.StoreBridge
 public import DecoupledConsensusProofs.Execution.BodyRetention
 public import DecoupledConsensusProofs.Protocol.ValidatorClient.RecordClean
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowFinalitySources
 
 @[expose] public section
 
@@ -310,40 +311,10 @@ private theorem w4_currentProduction_record_lock_body
     exact hrecord
   obtain ⟨i, hi, t, a, hevent, hemitted, hpair⟩ :=
     w4_recordLock_finalityEmission_before_named S rho v n hrecordN
-  have hshape := Proofs.Optimistic.emits_attest_shape S
-    (show rho.emits S v (Object.attest a) t from ⟨i, hevent, hemitted⟩)
-  have htime : t = S.a a.round := hshape.2
-  have haeq : a = actionAttestationAt S rho v a.round := by
-    have hemitAction : rho.emits S v (Object.attest a) (S.a a.round) := by
-      rw [← htime]
-      exact ⟨i, hevent, hemitted⟩
-    exact (NamedActionSources.action_run_emission_of_sorted_nodup S rho
-      core.sorted core.nodup v a.round a).mp
-      hemitAction |>.2.2
-  have hpair' :
-      (actionAttestationAt S rho v a.round).finality_pair = some ⟨H, T⟩ := by
-    rw [← haeq]
-    exact hpair
-  obtain ⟨D, hD, hDh, hDT⟩ :=
-    w4_currentProduction_finality_body_witness S rho v a.round hpair'
-  have hDi : D ∈ (rho.stateBefore S i v).st.bodies := by
-    have hDpre : D ∈ (rho.stateBeforeTime S (S.a a.round) v).st.bodies := by
-      simpa only [actionStoreAt, Proofs.HealingSurface.actionReadAt,
-        NamedActionReads.actionReadAt, NamedActionReads.actionReadFrom,
-        NamedActionReads.confirmationReadFrom, NamedActionReads.preparedCache,
-        NamedRun.stateBeforeTime] using! hD
-    have hbefore := Proofs.NamedRuntime.tick_prefix_eq_strict S rho
-      core.sorted core.nodup hevent
-    have hbefore' : NamedRun.stateBefore S rho i v =
-        NamedRun.stateBeforeTime S rho (S.a a.round) v := by
-      rw [← htime]
-      exact hbefore
-    change D ∈ (NamedRun.stateBefore S rho i v).st.bodies
-    rw [hbefore']
-    exact hDpre
+  obtain ⟨D, hDpost, hDh, hDT⟩ :=
+    NamedWindowFinalitySources.emitted_finality_body S rho hevent hemitted hpair
   have hDn : D ∈ (rho.stateBefore S n v).st.bodies :=
-    NamedBodyRetention.stateBefore_bodies_mono S rho v
-      (Nat.le_of_lt hi) hDi
+    NamedBodyRetention.stateBefore_bodies_mono S rho v (Nat.succ_le_of_lt hi) hDpost
   refine ⟨D, ?_, hDh, hDT⟩
   have hDn' : D ∈ (rho.stateBeforeTime S (S.a r) v).st.bodies := by
     have hn_v := congrFun hn v

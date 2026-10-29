@@ -737,6 +737,23 @@ its pre-event body. Thus a proposal sharing an action tick does not increase
 the emitted height beyond the strict pre-tick `h_max`, even though other
 attestation fields can read the newly inserted proposal.
 
+Actual finality rows have a different inventory guarantee from height rows.
+`emitted_finality_body` identifies their head's justification fields in the
+post-tick store. A record lock established by an earlier emission therefore
+has its body available at any later event prefix, by retention from that
+post-tick store. Both the frontier-lock body proof and the record-lock numeric
+bound use this fact while keeping their original paper-time conclusions.
+
+SG pool provenance and exact FG selector witnesses now identify the actual
+`windowActionAttestationAt` and `windowActionReadAt` observers, with emission
+time `Node.act`. Their explicit point corollaries recover the original
+observer contracts. An indexed action read equals the window observer at its
+actual tick. Equating it with the paper observer additionally requires the
+local action-time equality; a paper tick alone does not supply it. If that
+tick actually emits a row, P1 and the scheduler's round equation identify
+the row's round and supply the local equality. Consumers of these restated
+interfaces are still being migrated.
+
 The checked causal constructors are imported by the stable coverage consumer.
 Its remaining legacy producers, action-index histories and the complete
 output assembly are still being migrated; the complete library does not yet

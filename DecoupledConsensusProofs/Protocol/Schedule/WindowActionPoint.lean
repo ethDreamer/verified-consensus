@@ -38,4 +38,25 @@ theorem windowReadFrom_point (S : Setup V) (v : V) (before : NamedNodeState V)
   rw [ite_eq_right hproposal, ite_eq_right hvote, ite_eq_left hconfirm]
   rfl
 
+/-- The strict-time actual read recovers the paper observer at a locally
+coincident action (PROTOCOL.md `sec:healing-schedule`). -/
+theorem windowActionReadAt_point (S : Setup V) (rho : Run V) (v : V) (r : Round)
+    (hact : (S.node v).act r = S.a r) :
+    windowActionReadAt S rho v r = actionReadAt S rho v r := by
+  unfold windowActionReadAt windowActionReadFrom
+  rw [hact, windowReadFrom_point]
+  rfl
+
+/-- Exact attestation observers coincide at a locally point-scheduled action
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem windowActionAttestationAt_point (S : Setup V) (rho : Run V) (v : V) (r : Round)
+    (hact : (S.node v).act r = S.a r) :
+    windowActionAttestationAt S rho v r = Proofs.HealingSurface.actionAttestationAt S rho v r := by
+  unfold windowActionAttestationAt
+  rw [windowActionReadAt_point S rho v r hact]
+  rfl
+
+#print axioms windowActionReadAt_point
+#print axioms windowActionAttestationAt_point
+
 end DecoupledConsensusModel.Proofs.WindowAction

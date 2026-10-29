@@ -1,5 +1,6 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowFinalitySources
 public import DecoupledConsensusProofs.Execution.TimeoutDelay
 public import DecoupledConsensusProofs.Generic.EvaluationStore
 public import DecoupledConsensusProofs.Protocol.ValidatorClient.RecordTargetHistory
@@ -350,33 +351,13 @@ private theorem recordLockHeight_lt_actionHMax_named
     exact hlock
   obtain ⟨i, hi, t, a, hevent, hemitted, hpair⟩ :=
     recordLock_finalityEmission_before_named S rho v n hlockN
-  have hemit : rho.emits S v (Object.attest a) t :=
-    ⟨i, hevent, hemitted⟩
-  have hshape := Proofs.Optimistic.emits_attest_shape S hemit
-  have haeq : a = actionAttestationAt S rho v a.round := by
-    have hemit' : rho.emits S v (Object.attest a) (S.a a.round) := by
-      rw [← hshape.2]
-      exact hemit
-    exact (NamedActionSources.action_run_emission S rho
-      adm.toNamedAdmissibleCore.toNamedScheduleWellFormed
-      v a.round a).mp hemit' |>.2.2
-  have hlocal : H <
-      (actionStoreAt S rho v a.round).st.core.h_max := by
-    apply roundActionFinalityHeight_lt_actionHMax_named S adm v a.round
-    rw [← haeq]
-    exact hpair
-  have hbefore := Proofs.Optimistic.stateBefore_tick_eq_stateBeforeTime
-    S adm.toNamedAdmissibleCore.toNamedScheduleWellFormed hevent
-  change NamedRun.stateBefore S rho i v =
-    NamedRun.stateBeforeTime S rho t v at hbefore
-  have hlocalEq :
-      (actionStoreAt S rho v a.round).st.core.h_max =
-        (rho.stateBefore S i v).st.core.h_max := by
-    change (NamedRun.stateBeforeTime S rho (S.a a.round) v).st.core.h_max =
-      (NamedRun.stateBefore S rho i v).st.core.h_max
-    rw [← hshape.2, ← hbefore]
-  rw [hlocalEq] at hlocal
-  have hmono := stateBefore_hMax_mono S rho v (Nat.le_of_lt hi)
+  obtain ⟨D, hD, hDh, _⟩ :=
+    NamedWindowFinalitySources.emitted_finality_body S rho hevent hemitted hpair
+  have hno := NamedJustificationBound.noHighJustifications_stateBefore S rho (i + 1) v
+  have hbelow := NamedJustificationBound.justificationBelowMax_stateBefore S rho (i + 1) v
+  have hlocal : H < (rho.stateBefore S (i + 1) v).st.core.h_max :=
+    (hDh ▸ hno D hD).trans_lt hbelow
+  have hmono := stateBefore_hMax_mono S rho v (Nat.succ_le_of_lt hi)
   have hcurrentEq : (actionStoreAt S rho v r).st.core.h_max =
       (rho.stateBefore S n v).st.core.h_max := by
     simpa only [actionStoreAt, actionReadAt,
@@ -928,9 +909,11 @@ private theorem emittedAttestation_not_mem_named_chain_before
   · obtain ⟨hle, -⟩ :=
       Proofs.Bridges.carriedArePastEmissions_of_admissibleCore
         S adm.toNamedAdmissibleCore hproc hrow haHon
-    have htime : S.a a.round < t := hle.trans_lt (hbound j e hj hje)
-    have htEq : t = S.a a.round :=
-      (Proofs.Optimistic.emits_attest_shape S hemit).2
+    have htime : (S.node a.val_index).act a.round < t :=
+      hle.trans_lt (hbound j e hj hje)
+    have htEq : t = (S.node a.val_index).act a.round := by
+      have hs := Proofs.Optimistic.emits_attest_shape S hemit
+      simpa only [hs.1] using hs.2
     rw [← htEq] at htime
     exact lt_irrefl t htime
 
@@ -996,7 +979,7 @@ private theorem exactRow_mem_namedProcessed
     Proofs.Bridges.heldArePastEmissions_of_admissibleCore
       S adm.toNamedAdmissibleCore n (S.E.proposer s) hbN hbHon
   have hbEmit' : rho.emits S a.val_index
-      (Object.attest b) (S.a b.round) := by
+      (Object.attest b) ((S.node a.val_index).act b.round) := by
     simpa only [hbval] using hbEmit
   have hround : b.round = a.round :=
     congrArg CombinedAttestation.round hberase

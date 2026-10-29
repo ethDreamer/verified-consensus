@@ -1,6 +1,7 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.Concentration
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowActionPoint
 
 @[expose] public section
 
@@ -10,9 +11,9 @@ public import DecoupledConsensusProofs.Execution.Concentration
 An SG vote in a protocol pool is not only attributed data. Pool provenance
 finds the processed combined attestation, authenticity traces an honest author
 to its own emission, and the pool-round invariant identifies its action round.
-The scheduled Section 7 action at that round is another emission by the same
-validator. Honest one-per-round emission uniqueness therefore identifies the
-two attestations and their SG projections.
+The window-emission interface identifies that row with the validator's
+actual attestation input. The point-instance corollary recovers the paper
+observer and its original send time.
 
 This bridge needs no post-GST or relay premise. Receipt in the pool already
 supplies a causal in-run emission, and that emission itself proves that the
@@ -48,8 +49,9 @@ theorem honestSGVote_actionEmission_of_mem_storeBeforeTime
     (hv : v ∈ rho.honest)
     (hu : u ∈ (rho.storeBeforeTime S w time).toHealing.sg_votes k)
     (huv : u.val_index = v) :
-    u = actionSGVoteAt S rho v k ∧
-      rho.emits S v (Object.attest (actionAttestationAt S rho v k)) (S.a k) := by
+    u = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase ∧
+      rho.emits S v (Object.attest (NamedActionReads.windowActionAttestationAt S rho v k))
+        ((S.node v).act k) := by
   change u ∈
       ((rho.stateBeforeTime S time w).st.sg_pool k).image Protocol.sgVote at hu
   obtain ⟨a, ha, hau⟩ := Finset.mem_image.mp hu
@@ -93,25 +95,17 @@ theorem honestSGVote_actionEmission_of_mem_storeBeforeTime
   have hrowV : row.val_index = v := by rw [hrowEq] at hav; exact hav
   have hrowRound : row.round = k := by rw [hrowEq] at haround; exact haround
   have hemitV : rho.emits S v (Object.attest row) t' := hrowV ▸ hemit
-  have hshape := Proofs.Optimistic.emits_attest_shape S hemitV
-  have htime : t' = S.a k := by rw [hshape.2, hrowRound]
-  have hemitVCopy := hemitV
-  obtain ⟨i, hi, -⟩ := hemitVCopy
-  have hiMem : Event.tick v t' ∈ rho.events := List.mem_of_getElem? hi
-  have hactionHor : S.a k ≤ rho.horizon := by
-    have h := (adm.in_horizon (Event.tick v t') hiMem).2
-    simpa only [Event.time, htime] using! h
-  have hrowAction : row = actionAttestationAt S rho v k := by
-    have hcanonical := ((NamedActionSources.action_run_emission S rho
-      adm.toNamedScheduleWellFormed v k row).mp
+  have htime : t' = (S.node v).act k := by
+    rw [(WindowAction.run_emission_fields S hemitV).1, hrowRound]
+  have hrowAction : row = NamedActionReads.windowActionAttestationAt S rho v k :=
+    ((WindowAction.run_emission_iff S rho adm.toNamedScheduleWellFormed v k row).mp
       (by simpa only [htime] using hemitV)).2.2
-    simpa only [hrowRound] using hcanonical
   refine ⟨?_, ?_⟩
   · calc
       u = Protocol.sgVote a := hau.symm
       _ = Protocol.sgVote row.erase := by rw [hrowEq]
-      _ = Protocol.sgVote (actionAttestationAt S rho v k).erase := by rw [hrowAction]
-      _ = actionSGVoteAt S rho v k := sgVote_actionAttestationAt S rho v k
+      _ = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase := by
+        rw [hrowAction]
   · rw [← hrowAction, ← htime]
     exact hemitV
 
@@ -122,7 +116,7 @@ theorem honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime
     (hv : v ∈ rho.honest)
     (hu : u ∈ (rho.storeBeforeTime S w time).toHealing.sg_votes k)
     (huv : u.val_index = v) :
-    u = actionSGVoteAt S rho v k :=
+    u = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase :=
   (honestSGVote_actionEmission_of_mem_storeBeforeTime S adm hv hu huv).1
 
 
@@ -134,9 +128,28 @@ theorem honestSGVote_eq_actionSGVoteAt_of_mem_actionStore
     (hv : v ∈ rho.honest)
     (hu : u ∈ (actionStoreAt S rho w r).toHealing.sg_votes k)
     (huv : u.val_index = v) :
-    u = actionSGVoteAt S rho v k := by
+    u = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase := by
   rw [actionStoreAt_projectedSGVotes S rho w r] at hu
   exact honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime S adm hv hu huv
+
+/-- The point schedule recovers the original pool observer and send-time
+contract (PROTOCOL.md `sec:healing-schedule`). -/
+theorem honestSGVote_actionEmission_of_mem_storeBeforeTime_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    {w v : V} {time : Time} {k : Round} {u : Protocol.SGVote V}
+    (hv : v ∈ rho.honest)
+    (hu : u ∈ (rho.storeBeforeTime S w time).toHealing.sg_votes k)
+    (huv : u.val_index = v) :
+    u = actionSGVoteAt S rho v k ∧
+      rho.emits S v (Object.attest (actionAttestationAt S rho v k)) (S.a k) := by
+  have h := honestSGVote_actionEmission_of_mem_storeBeforeTime S adm hv hu huv
+  rw [WindowAction.windowActionAttestationAt_point S rho v k (hpoint v k),
+    hpoint, sgVote_actionAttestationAt] at h
+  exact h
+
+#print axioms honestSGVote_actionEmission_of_mem_storeBeforeTime
+#print axioms honestSGVote_actionEmission_of_mem_storeBeforeTime_point
 
 end HealingSurface
 end Proofs
