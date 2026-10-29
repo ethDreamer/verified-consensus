@@ -1,4 +1,5 @@
 module
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowAction
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.OutageInputs
 public import DecoupledConsensusProofs.Execution.ReceiptCalls
@@ -56,18 +57,13 @@ theorem emitted_same_round_unique (S : Setup V) (rho : NamedRun V)
     (ha : NamedRun.emits S rho v (.attest a) ta)
     (hb : NamedRun.emits S rho v (.attest b) tb)
     (hr : a.round = b.round) : a = b := by
-  obtain ⟨i, hi, _, hrowi, _, _, hti, _⟩ :=
-    Proofs.NamedOutageInputs.emitted_attestation_stages S rho ha
-  obtain ⟨j, hj, _, hrowj, _, _, htj, _⟩ :=
-    Proofs.NamedOutageInputs.emitted_attestation_stages S rho hb
-  have htt : ta = tb := hti.trans ((congrArg S.a hr).trans htj.symm)
-  obtain ⟨hiLen, hiGet⟩ := List.getElem?_eq_some_iff.mp hi
-  obtain ⟨hjLen, hjGet⟩ := List.getElem?_eq_some_iff.mp hj
-  have hij : i = j := (List.Nodup.getElem_inj_iff sch.nodup).mp
-    (by rw [hiGet, hjGet, htt])
-  subst j
-  rw [hr] at hrowi
-  exact hrowi.symm.trans hrowj
+  have hta := (WindowAction.run_emission_fields S ha).1
+  have htb := (WindowAction.run_emission_fields S hb).1
+  rw [hta] at ha
+  rw [htb, ← hr] at hb
+  have hea := (WindowAction.run_emission_iff S rho sch v a.round a).mp ha
+  have heb := (WindowAction.run_emission_iff S rho sch v a.round b).mp hb
+  exact hea.2.2.trans heb.2.2.symm
 
 theorem held_block_origin (S : Setup V) (rho : NamedRun V) (i : Nat) (v : V)
     {B : NamedBlock V} (hB : B ∈ (NamedRun.stateBefore S rho i v).st.bodies) :

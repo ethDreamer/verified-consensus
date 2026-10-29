@@ -49,9 +49,7 @@ theorem emits_attest_awake (S : Setup V) {rho : NamedRun V} {v : V}
     {a : NamedAttestation V} {t : Time}
     (h : NamedRun.emits S rho v (NamedObject.attest a) t) :
     (S.node v).awake a.round = true := by
-  obtain ⟨-, -, -, -, -, -, -, hawake⟩ :=
-    Proofs.NamedOutageInputs.emitted_attestation_stages S rho h
-  exact hawake
+  exact (WindowAction.run_emission_fields S h).2.1
 
 
 /-- The emitted attestation is exactly the attest duty's output on that read,
@@ -71,8 +69,8 @@ theorem emits_attest_duty (S : Setup V) {rho : NamedRun V} {v : V}
   exact ⟨i, hi, hduty⟩
 
 /-- **An honest validator emits at most one attestation per round**
-(PROTOCOL.md#the-complete-protocol). Both emissions are at `a_r`, the tick at an instant is
-unique, and a tick emits at most one attestation. -/
+(PROTOCOL.md#the-complete-protocol). Both emissions are at the validator's action
+time, the tick at an instant is unique, and a tick emits at most one attestation. -/
 theorem emits_attest_unique (S : Setup V) {rho : NamedRun V}
     (sch : ScheduleWellFormed S rho)
     {v : V} {a b : NamedAttestation V} {t₁ t₂ : Time}
