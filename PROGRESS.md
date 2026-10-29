@@ -34,3 +34,13 @@ Blocked: Ten legacy point-time obligations remain, all marked on their sorry lin
 Next: Migrate the legacy action observer definitions and source/arrival callers to windowActionReadAt/windowActionAttestationAt and the checked window emission interface, then migrate the concentration, safety, healing, and liveness proofs and remove every tracked placeholder. Stage 2 remains incomplete; Stage 3 has not begun.
 Findings: P1/P2/P3 permit an action at a Goldfish vote tick. The checked R=3, Delta=1 example has act 0=5 rather than a_0=6, so fixed-time emission contracts fail; merely substituting act for a in a singleton-emission equation also fails because the tick emits both a Goldfish vote and an attestation. The correct proved interface uses attestation membership and the actual post-duty input. This is a failure of legacy point-time helper contracts, not a demonstrated counterexample to the protected consensus claims, and the remaining ten sorries are migration debt rather than a claim that those protected results are irreducible.
 
+
+## 2026-10-29T00:30:00Z — reviewer audit (not a work entry)
+Independent review of the handoff state at 911c73f: the tracked sorry count
+(10) matches the report; the protected review surface and docs/PROTOCOL.md are
+byte-identical to the original brief commit 8e513e5, diff-verified; the STATUS
+history is consistent with the commits. Stage 1 was previously accepted with a
+reproduced green build and clean verify.sh. The Stage 2 partial state is
+accepted as an honest frontier: the ten obligations are migration debt in
+legacy point-time helpers, per the 2026-10-28T23:57:42Z entry. Work continues
+from that entry's Next section under the brief as amended through 9906768.
