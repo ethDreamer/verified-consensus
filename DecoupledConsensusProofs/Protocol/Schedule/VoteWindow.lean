@@ -140,6 +140,16 @@ theorem act_lt_next (S : Setup V) (u v : V) (r : Round) :
     (S.node u).act r < (S.node v).act (r + 1) :=
   lt_of_lt_of_le (S.act_before_round_end u r) (S.opening_le_act v (r + 1))
 
+/-- The latest permitted action deadline precedes the next paper instant
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem act_deadline_lt_next_a (S : Setup V) (v : V) (r : Round) :
+    (S.node v).act r + S.E.Δ < S.a (r + 1) := by
+  apply lt_of_le_of_lt (S.act_pre_cutoff v r)
+  have hd := S.E.Δ_pos
+  simp only [Protocol.early, Protocol.opening, Protocol.proposal_time, Env.t,
+    Protocol.Phase.earlyOffset, Setup.a, Protocol.HealConfig.a]
+  linarith
+
 /-- Strict delivery of a window vote precedes each next-round early cutoff. -/
 theorem delivery_before_next_early (S : Setup V) (v : V) (r : Round)
     (p : Protocol.Phase) {received : Time}
