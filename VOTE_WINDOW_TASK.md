@@ -236,6 +236,33 @@ a finding — that would mean the healing argument depends on the absence of
 honest round-`(r−1)` evidence during the outage, which would be a
 substantive design discovery, not plumbing.
 
+*Resolution of the straggler content question (2026-10-29)*: your grade-view
+diagnostic is accepted and corrects the previous paragraph again: its
+"coverage monotonicity in honest arrivals" obligation is false as stated,
+because the SG predicate is a relative majority — an arrival confirming a
+head outside the covered prefix is opposition, not support. Withdraw that
+obligation; the proved `supports_of_covering_arrivals` /
+`opposes_before_of_covering_arrivals` conditional form is the correct one.
+The missing piece is its hypothesis, and the answer to your contract
+question is the first branch: the base/step carries a straggler
+confirmed-head floor as a DERIVED lemma, never a premise. Prove that every
+honest round-`(r−1)` emission at or after `b0` has its confirmed head above
+the covered prefix, from the hypotheses already present: the emitter's own
+last pre-boundary state (placed above the prefix by the pre-boundary-frames
+hypothesis) carried forward along the emitter's own timeline to
+`act (r−1)` by causal record/FG preservation — record monotonicity and the
+G0 veto mean outage-era inputs can delay what the emitter hears but cannot
+move its confirmed head below the prefix. This is the same floor argument
+the invariant makes for included rounds, anchored at the emitter's
+pre-boundary state instead of the round invariant. Do not reformulate the
+support/risk invariant to tolerate uncovered stragglers, and do not
+strengthen the outage regime. The point instance has no stragglers, so the
+floor is vacuous and the original argument is recovered; check it
+explicitly. If the floor derivation fails because record/FG preservation
+along a single honest timeline is not available across `[b0, act (r−1)]`,
+stop and report it as a finding — that would locate a real sensitivity of
+healing to the window, and is exactly what this exercise exists to surface.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
