@@ -87,9 +87,9 @@ private theorem indexed_finalizer_compatible
         hexec.core.toNamedUnforgeable i reader hD hcarrierD hrow haHon
     obtain ⟨e, he, _, het⟩ := hacc.1.2
     have hreceived : received < b0 := by simpa only [het] using hbefore j e hj he
-    have hsent : S.a a.round < b0 := hsend.trans_lt hreceived
+    have hsent : (S.node a.val_index).act a.round < b0 := hsend.trans_lt hreceived
     refine ⟨F, hFheld, hFErase.trans hDF, ?_⟩
-    exact hno.2 Pn hPn rfl a (S.a a.round) haHon hem hsent
+    exact hno.2 Pn hPn rfl a ((S.node a.val_index).act a.round) haHon hem hsent
       _ F.root hpair F hFscope rfl
 
 omit [DecidableEq V] [Fintype V] in

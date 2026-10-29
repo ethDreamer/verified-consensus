@@ -109,7 +109,8 @@ theorem carriedArePastEmissions_of_processes (S : Setup V) (rho : NamedRun V)
     {receiver : V} {B : NamedBlock V} {a : NamedAttestation V} {t : Time}
     (hB : NamedRun.processes S rho receiver (.block B) t)
     (ha : a ∈ B.attestations) (hHon : a.val_index ∈ rho.honest) :
-    S.a a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) :=
+    (S.node a.val_index).act a.round ≤ t ∧
+      NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) :=
   NamedOutageProvenance.honest_carried_row_emission S rho auth hB ha hHon
 
 /-- The admissible-core form of `carriedArePastEmissions_of_processes`. -/
@@ -118,7 +119,8 @@ theorem carriedArePastEmissions_of_admissibleCore (S : Setup V) {rho : NamedRun 
     {receiver : V} {B : NamedBlock V} {a : NamedAttestation V} {t : Time}
     (hB : NamedRun.processes S rho receiver (.block B) t)
     (ha : a ∈ B.attestations) (hHon : a.val_index ∈ rho.honest) :
-    S.a a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) :=
+    (S.node a.val_index).act a.round ≤ t ∧
+      NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) :=
   carriedArePastEmissions_of_processes S rho adm.toNamedUnforgeable hB ha hHon
 
 /-- **A held honest row was accepted earlier and emitted at its own action.**
@@ -130,7 +132,8 @@ theorem heldArePastEmissions_of_admissibleCore (S : Setup V) {rho : NamedRun V}
     (hHon : a.val_index ∈ rho.honest) :
     ∃ j : Nat, j < i ∧ ∃ t : Time,
       NamedRun.acceptsAt S rho j receiver (.attest a) t ∧
-      S.a a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) :=
+      (S.node a.val_index).act a.round ≤ t ∧
+      NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) :=
   NamedOutageProvenance.honest_held_row_emission S rho adm.toNamedUnforgeable i receiver ha hHon
 
 

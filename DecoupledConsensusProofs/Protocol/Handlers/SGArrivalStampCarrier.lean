@@ -743,7 +743,8 @@ theorem honest_input_pool_row (S : Setup V) (rho : NamedRun V)
   have hhon : named.val_index ∈ rho.honest := by simpa only [hval] using ha
   obtain ⟨_, _, _, _, _, hnEmit⟩ :=
     NamedOutageProvenance.honest_held_row_emission S rho auth (i + 1) reader hheld hhon
-  have hnEmit' : NamedRun.emits S rho a.val_index (.attest named) (S.a named.round) := by
+  have hnEmit' : NamedRun.emits S rho a.val_index (.attest named)
+      ((S.node a.val_index).act named.round) := by
     simpa only [hval] using hnEmit
   have hna : named = a := NamedOutageProvenance.emitted_same_round_unique S rho sch hnEmit' hem hr
   exact ⟨he.symm.trans (congrArg NamedAttestation.erase hna), by simpa only [hna] using hn⟩
