@@ -4,7 +4,7 @@ public import DecoupledConsensusProofs.Protocol.ForkChoice.Goldfish.ActionSource
 public import DecoupledConsensusProofs.Protocol.ValidatorClient.FinalityPairCore
 public import DecoupledConsensusProofs.Objects.AttestationCanonicality
 public import DecoupledConsensusProofs.Execution.EmissionShape
-public import DecoupledConsensusProofs.Protocol.Duties.Inputs.IntrinsicEntry
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowIntrinsicEntry
 public import DecoupledConsensusProofs.Protocol.ChainState.ProposalBridge
 
 @[expose] public section
@@ -129,13 +129,23 @@ theorem emission_index_lt_beforeTime_prefix
 
 /-! ## Exact active-source interface -/
 
-/-- The read one honest round action actually builds its row on: the round's
-`actionReadFrom` on the emitter's own state before its tick. This is the read
-`Proofs.Optimistic.emits_attest_duty` names. -/
+/-- The actual action input includes every preceding duty in the emission
+tick (PROTOCOL.md `sec:public-handlers`). -/
 abbrev actionEventRead (S : Setup V) (rho : Run V) (i : Nat) (v : V)
     (r : Round) : NamedNodeState V :=
-  actionReadFrom S (rho.stateBefore S i v) r
+  NamedActionReads.windowActionReadFrom S v (rho.stateBefore S i v) r
 
+
+/-- The actual event input recovers the original action read under the point
+schedule (PROTOCOL.md `sec:healing-schedule`). -/
+theorem actionEventRead_point (S : Setup V) (rho : Run V)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r) (i : Nat) (v : V) (r : Round) :
+    actionEventRead S rho i v r = actionReadFrom S (rho.stateBefore S i v) r := by
+  unfold actionEventRead NamedActionReads.windowActionReadFrom
+  rw [hpoint]
+  exact Proofs.WindowAction.windowReadFrom_point S v _ r
+
+#print axioms actionEventRead_point
 
 /-- The actual sources a round action can select, read at that action's own
 prepared read and under that read's own contract.
@@ -183,13 +193,9 @@ private theorem index_of_same_event {alpha : Type} (events : List alpha)
 private theorem signedSource_scope
     (S : Setup V) {rho : Run V} {i : Nat} {a : NamedAttestation V}
     {source entry : NamedBlock V} (ha : a.val_index ∈ rho.honest)
-    (hs : Internal.NamedJointOutage.SignedSourceAt S rho i a source entry) :
+    (hs : Internal.NamedJointOutage.WindowSignedSourceAt S rho i a source entry) :
     RunBlock S rho source ∧ RunBlock S rho entry := by
-  rcases hs with ⟨_, _, _, hsource, _, hentry, _⟩
-  have hpre : source ∈ (NamedRun.stateBefore S rho i a.val_index).st.bodies := hsource
-  have hscope := Proofs.NamedRuntime.blockInRun_of_direct S rho
-    (Proofs.NamedRuntime.directBlock_of_prefix S rho ha i hpre)
-  exact ⟨hscope, Proofs.NamedRuntime.blockInRun_of_ancestor S rho hscope hentry⟩
+  exact Proofs.NamedWindowIntrinsicEntry.signed_source_entry_scope S rho ha hs
 
 private theorem named_eq_of_runBlock_root
     (S : Setup V) {rho : Run V} (hadm : Admissible S rho)
@@ -319,10 +325,10 @@ theorem honestAttestationOutputPreceqAtIndex_of_activeSources
     have hemit := emits_of_emittedAt_tick S hi ha
     have hshape := Proofs.Optimistic.emits_attest_shape S hemit
     have hemit' : NamedRun.emits S rho a.val_index
-        (Object.attest a) (S.a a.round) := by
+        (Object.attest a) ((S.node a.val_index).act a.round) := by
       simpa only [hshape.1, hshape.2] using hemit
     obtain ⟨j, source, entry, hsigned, hheight, hentryRoot⟩ :=
-      Proofs.NamedIntrinsicEntry.emitted_height_signed_source S rho hemit' hpair
+      Proofs.NamedWindowIntrinsicEntry.emitted_height_signed_source S rho hemit' hpair
     have hj : rho.events[j]? = some (Event.tick v time) := by
       rw [hshape.2, ← hshape.1]
       exact hsigned.1
@@ -364,18 +370,32 @@ theorem honestAttestationOutputPreceqAtIndex_of_activeSources
     have hselected : a.confirmed = some
         (Protocol.get_sg_vote_with gc S.E S.hc n.st.core.toHealing a.round
           (Protocol.grade2_block_with gc S.E S.hc n.st.core.toHealing a.round)).root := by
-      rw [← hrow]
-      rfl
+      have hc := congrArg NamedAttestation.confirmed hrow
+      change some (Protocol.get_sg_vote_with gc S.E S.hc n.st.core.toHealing
+        (S.hc.round_of n.st.core.s) (Protocol.grade2_block_with gc S.E S.hc
+          n.st.core.toHealing (S.hc.round_of n.st.core.s))).root = a.confirmed at hc
+      rw [← hround] at hc
+      exact hc.symm
     have hselectedB := activeSGVote_preceq S hsources hv hi ha hround
-    have hinv := Proofs.NamedOutageInputs.action_read_invariant S rho i v a.round
+    have hinv := Proofs.WindowAction.windowRead_invariant S v
+      (NamedRun.stateBefore S rho i v) ((S.node v).act a.round)
+      (Proofs.NamedRuntime.stateBefore_invariants S rho i v).1
     have hmem := Proofs.NamedConfirmationMembership.sg_head_mem n.cache
       S.E S.hc S.cfg n.st hinv
     have hcoh : Proofs.NamedStore.Coherent S.E S.cfg n.st := hinv.1.1
     rw [hcoh.1] at hmem
     obtain ⟨Y, hY, hYerase⟩ := Finset.mem_image.mp hmem
-    have hpre : Y ∈ (NamedRun.stateBefore S rho i v).st.bodies := hY
+    have hpost : Y ∈ (NamedRun.stateBefore S rho (i + 1) v).st.bodies := by
+      have hp := (Proofs.NamedWindowIntrinsicEntry.emission_post_projection S rho
+        (show rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)) by
+          simpa only [hval, ht] using hi)
+        (show Object.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+          ((S.node a.val_index).act a.round) by simpa only [hval, ht] using ha)).1
+      rw [hval] at hp
+      rw [hp]
+      exact hY
     have hYrun : RunBlock S rho Y := Proofs.NamedRuntime.blockInRun_of_direct S rho
-      (Proofs.NamedRuntime.directBlock_of_prefix S rho hv i hpre)
+      (Proofs.NamedRuntime.directBlock_of_prefix S rho hv (i + 1) hpost)
     rw [← hround] at hYerase
     have hYroot : X.erase.root = Y.erase.root := by
       have hselectedRoot : root =
@@ -400,10 +420,10 @@ theorem honestAttestationOutputPreceqAtIndex_of_activeSources
         subst h
         have hshape := Proofs.Optimistic.emits_attest_shape S hemit
         have hemit' : NamedRun.emits S rho a.val_index
-            (Object.attest a) (S.a a.round) := by
+            (Object.attest a) ((S.node a.val_index).act a.round) := by
           simpa only [hshape.1, hshape.2] using hemit
         obtain ⟨j, source, entry, hsigned, hsourceHeight, -⟩ :=
-          Proofs.NamedIntrinsicEntry.emitted_height_signed_source S rho hemit' hp
+          Proofs.NamedWindowIntrinsicEntry.emitted_height_signed_source S rho hemit' hp
         have hj : rho.events[j]? = some (Event.tick v time) := by
           rw [hshape.2, ← hshape.1]
           exact hsigned.1

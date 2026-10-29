@@ -628,6 +628,36 @@ theorem clockRound_lt_completion_succ (S : Setup V) (t : Time) :
   simp only [domain, Phase.domainOffset, one_mul]
   linarith
 
+/-- The first selected round supplies a causal anchor for reads whose paper
+round is still before the boundary. Minimality bounds the clock round, while
+the event induction includes all stragglers (PROTOCOL.md `sec:healing-schedule`). -/
+theorem first_round_causal_anchor
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r0 : Round) (P : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
+    (hsleep : OutageSleepyThroughout S rho) (hP : NamedRun.blockInRun S rho P)
+    (hno : NoHonestConflictAbove S rho b0 P.erase)
+    (hb : b0 ≤ S.a r0)
+    (hmin : ∀ q : Round, 0 < q → b0 ≤ S.a q → r0 ≤ q)
+    (hfirst : S.a (r0 - 1) < b0) (hframes : PreBoundaryFrames S rho b0 s P.erase)
+    (hheld0 : ∀ v ∈ rho.honest, P ∈ (NamedRun.stateBeforeTime S rho b0 v).st.bodies)
+    (t : Time) (hstr : S.a (clockRoundAt S t) < b0) :
+    ∃ cut : Time, IntrinsicConflictingCarrierBandIdx S rho P (strictEventCut rho cut) ∧
+      IntrinsicHighEntryHistoryIdx S rho P (strictEventCut rho cut) ∧ t < cut := by
+  obtain ⟨hh, hband⟩ := NamedStragglerEntryHistory.first_round_event_history
+    S rho b0 b1 s r0 P hexec hmargin hsleep hP hno hmin hfirst hframes hheld0 _ le_rfl
+  refine ⟨domain S.E S.hc r0 .g0, hband, hh, ?_⟩
+  have hlt : clockRoundAt S t < r0 := by
+    by_contra hn
+    exact (not_lt_of_ge (hb.trans (Assembly.a_mono S (Nat.le_of_not_gt hn)))) hstr
+  have hm := S.hc.domain_mono S.E .g1 (Nat.succ_le_of_lt hlt)
+  simp only [domain, Phase.domainOffset, zero_mul, add_zero] at hm
+  have hopen := (clockRound_lt_opening_succ S t).trans_le hm
+  have hd := S.E.Δ_pos
+  simp only [domain, Phase.domainOffset, one_mul]
+  linarith
+
+#print axioms first_round_causal_anchor
+
 /-- A time inside round `r`'s own span has clock round `r`. -/
 theorem clockRoundAt_eq (S : Setup V) (t : Time) (r : Round) (ht0 : (0 : Time) ≤ t)
     (hlo : opening S.E S.hc r ≤ t) (hhi : t < opening S.E S.hc (r + 1)) :

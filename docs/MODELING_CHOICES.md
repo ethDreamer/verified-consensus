@@ -702,6 +702,29 @@ is later than the horizon, only prior-round voters are equated with the awake
 profile; P2 puts those actions before that opening. The explicit point
 corollary restores the original `S.a k ≤ horizon` hypothesis.
 
+The pre-boundary head relay uses the actual post-event body inventory.
+Acceptance provenance places a head's acceptance at or before its action tick,
+even if the proposal duty inserted that body in the same tick. The existing
+healthy relay rule then gives receipt strictly before the unchanged
+`send + Δ` cutoff. No equality with the strict pre-tick inventory and no
+extra delivery premise is required. Pre-boundary opening SG certificates
+use causal entry history before G0 completion, which lies before the outage
+boundary in that branch, and P2 supplies the per-validator vacuity bound.
+
+`first_round_causal_anchor` derives an anchor before the first selected
+round's G0 completion: a read whose clock-round paper instant is before
+`b0` has clock round below the selected round, so the read precedes that
+round's opening and G0 completion. The producer includes stragglers through
+the event induction. Its final stable-coverage consumer migration remains
+in progress.
+
+The event-indexed active-source interface now reads `windowActionReadFrom`.
+Its attestation-output proof extracts actual signed sources and places named
+sources and confirmed heads in the post-event run inventory. The point
+read equality is checked separately by `actionEventRead_point`; downstream
+paper-read bridges still need to distinguish an actual emission from a tick
+that emits no attestation.
+
 The checked causal constructors are imported by the stable coverage consumer.
 Its remaining legacy producers, action-index histories and the complete
 output assembly are still being migrated; the complete library does not yet

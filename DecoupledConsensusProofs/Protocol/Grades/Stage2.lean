@@ -24,20 +24,11 @@ public import DecoupledConsensusProofs.Execution.OutputSeedCore
 `HonestHeadHeldAbove` discharged from `OutageExecution` and clause 1
 (`HonestConfirmedAtOrAbove`), with no further premise.
 
-The route has three steps. The emitter's own action read holds a body whose
-root is the confirmed root (`Proofs.NamedOutageInputs.emitted_attestation_head`).
-That body membership is stated at the STAGED INDEX read
-`actionReadFrom S (NamedRun.stateBefore S rho i v) a.round`; the staging only
-sets the clock and runs the confirmation duty, neither of which touches
-`st.bodies`, so it transfers to `NamedRun.stateBefore S rho i v`, and
-`Proofs.NamedRuntime.tick_prefix_eq_strict` turns that into the TIME read
-`NamedRun.stateBeforeTime S rho t v`. Clause 1, applied at the same action with
-`K:= H`, puts `P` below `H.erase`; composed with the clause's own guard
-`F(cut) ⪯ P` that is the finalized-prefix hypothesis of
-`NamedHealthyHeadReady.healthy_head_body_at_read`, whose three time hypotheses
-are exactly `le_rfl`, the clause's `t + Δ ≤ cut` and the clause's `t + Δ ≤ b0`.
-The returned holding, the returned stamp at `t + Δ` pushed up by
-`occurrenceBefore_mono`, and the root equation finish the three conjuncts.
+The confirmed head is held after the actual action tick, including any body
+inserted by the proposal duty earlier in that tick. Its acceptance provenance
+puts the acceptance at or before the emission time. Healthy relay then puts
+the body at the reader strictly before the unchanged one-delay deadline
+(PROTOCOL.md `sec:public-handlers`).
 -/
 namespace DecoupledConsensusModel.Proofs.NamedOutageClosure
 
@@ -46,12 +37,6 @@ open Internal.NamedJointOutage
 open DecoupledConsensusModel.Protocol DecoupledConsensusModel.Protocol DecoupledConsensusModel.Protocol
 
 variable {V : Type} [DecidableEq V] [Fintype V]
-
-/-- The staged action read does not touch the bodies: `actionReadFrom` sets the
-clock and runs `update_confirmation_with`, and the named form of the latter
-rewrites only the `core` field. -/
-private theorem actionReadFrom_bodies (S : Setup V) (n : NamedNodeState V) (r : Round) :
-    (actionReadFrom S n r).st.bodies = n.st.bodies := rfl
 
 /-- Arithmetic core over bare `Int`: `omega` refuses a goal stated at the `Time`
 alias and cannot see `Δ_pos`, so the margin-to-strict step is stated here. -/
@@ -70,21 +55,15 @@ theorem stage2_honestHeadHeldAbove (S : Setup V) (rho : NamedRun V) (b0 b1 : Tim
     (hconf1 : HonestConfirmedAtOrAbove S rho b0 s P) :
     HonestHeadHeldAbove S rho b0 s P := by
   intro a t ha hem hmargin hround reader hreader cut hcut hFP key hkey
-  -- Step 1: the emitter-side body, at the staged index read.
-  obtain ⟨i, hi, _, H, hH, hroot⟩ := Proofs.NamedOutageInputs.emitted_attestation_head S rho hem
-  -- Bridge A1: the staging leaves `st.bodies` alone.
-  have hHindex : H ∈ (NamedRun.stateBefore S rho i a.val_index).st.bodies := by
-    rw [← actionReadFrom_bodies S (NamedRun.stateBefore S rho i a.val_index) a.round]
+  obtain ⟨i, hi, ho, H, hH, hroot⟩ := Proofs.NamedOutageInputs.emitted_attestation_head S rho hem
+  have ht := (WindowAction.run_emission_fields S hem).1
+  have hHindex : H ∈ (NamedRun.stateBefore S rho (i + 1) a.val_index).st.bodies := by
+    rw [(NamedWindowIntrinsicEntry.emission_post_projection S rho
+      (ht ▸ hi) (ht ▸ ho)).1]
     exact hH
-  -- Bridge A2: the index read at a witnessed tick is the strict time read.
-  have hstate : NamedRun.stateBefore S rho i a.val_index =
-      NamedRun.stateBeforeTime S rho t a.val_index :=
-    Proofs.NamedRuntime.tick_prefix_eq_strict S rho hexec.core.sorted hexec.core.nodup hi
-  have hHsource : H ∈ (NamedRun.stateBeforeTime S rho t a.val_index).st.bodies := by
-    rw [← hstate]; exact hHindex
-  -- Step 2: `P ⪯ H.erase`, from clause 1 at the same action with `K:= H`.
   have hscope : NamedRun.blockInRun S rho H :=
-    Proofs.NamedRuntime.blockInRun_of_direct S rho (Or.inr ⟨a.val_index, ha, i, hHindex⟩)
+    Proofs.NamedRuntime.blockInRun_of_direct S rho
+      (Proofs.NamedRuntime.directBlock_of_prefix S rho ha (i + 1) hHindex)
   have hkeyH : H.root = key := Option.some.inj (hroot.symm.trans hkey)
   have htlt : t < b0 := lt_of_add_pos_le t S.E.Δ b0 S.E.Δ_pos hmargin
   have hPH : Block.Preceq P H.erase := hconf1 a t ha hem htlt hround key hkey H hscope hkeyH
@@ -92,8 +71,9 @@ theorem stage2_honestHeadHeldAbove (S : Setup V) (rho : NamedRun V) (b0 b1 : Tim
   have hF : Block.Preceq (NamedRun.stateBeforeTime S rho cut reader).st.core.F H.erase :=
     Block.preceq_trans hFP hPH
   obtain ⟨hheld, hstamp, _⟩ :=
-    NamedHealthyHeadReady.healthy_head_body_at_read S rho hexec.core b0 hexec.healthy
-      a.val_index ha reader hreader H t (t + S.E.Δ) cut hHsource le_rfl hcut hmargin hF
+    NamedHealthyHeadReady.healthy_head_body_at_read_of_event S rho hexec.core b0 hexec.healthy
+      a.val_index ha reader hreader H t (t + S.E.Δ) cut i (.tick a.val_index t) hi rfl
+        hHindex le_rfl hcut hmargin hF
   -- Step 4: the three conjuncts.
   refine ⟨H, hheld, hkeyH, ?_, ?_⟩
   · -- `Block.compatible B C = preceq B C || preceq C B`, and we have the second.
@@ -166,17 +146,22 @@ theorem stage2_preBoundaryFrames_above (S : Setup V) (rho : NamedRun V) (b0 b1 :
     (((FrameForward.domain_le_a S q .g2).trans (le_of_lt hqb0)).trans hexec.interval.2.1).trans
       (le_add_of_nonneg_right S.E.Δ_pos.le)
   -- The two intrinsic history premises, both from the pre-boundary cut.
-  have hentry : IntrinsicHighEntryHistory S rho Pm q :=
-    Proofs.NamedIntrinsicEntry.initial_intrinsic_history S rho b0 Pm q hscope hno hfirst
-  have hband : IntrinsicConflictingCarrierBand S rho Pm q :=
-    NamedConflictingCarrierBand.intrinsic_conflicting_carrier_band S rho b0 b1 s q Pm hexec
-      hmargin hsleep hentry
+  have hentry : IntrinsicHighEntryHistoryIdx S rho Pm
+      (strictEventCut rho (domain S.E S.hc q .g0)) :=
+    NamedWindowIntrinsicEntry.initial_intrinsic_history S rho b0 Pm _ hscope hno (by
+      intro i hi e he
+      exact (NamedStrictEventCut.time_lt_of_lt_strictEventCut rho hexec.core.sorted _ hi he).trans_le
+        ((FrameForward.domain_le_a S q .g0).trans hqb0.le))
+  have hband := NamedEventConflictingCarrierBand.intrinsic_conflicting_carrier_band
+    S rho b0 b1 s _ Pm hexec hmargin hsleep hentry
+  have hpost := base_hpost S rho b0 q Pm
+    (base_actions_before_of_paper_lt S b0 q hqpos hqb0)
   exact sg_at_domain_read_of_common_support_at S rho b0 b1 s q Pm hexec hslash hsleep hforming
     hscope hqpos hsq hhor hmargin hno hband hentry hheld0
     (base_hpost S rho b0 q Pm
       (base_actions_before_of_paper_lt S b0 q hqpos hqb0)) ⟨hconf1, hconf2⟩ v hv hseed
     (common_support_base_at S rho b0 b1 v s q Pm hexec hsleep hforming hv hmargin hseed
-      hscope hno hconf1 hconf2 hbudget hentry hqpos hgap hrb1 hfirst) w hw
+      hscope hno hconf1 hconf2 hbudget hentry hqpos hgap hrb1 hpost) w hw
 
 #print axioms stage2_preBoundaryFrames_above
 
@@ -261,8 +246,8 @@ private theorem stage2_voter_early_input (S : Setup V) (rho : NamedRun V) (b0 b1
   have hcready := retained_bodyReady S rho sch roots b0 s Pn.erase hhead w hw u
     (Finset.mem_filter.mp hu).1 hcval (le_of_eq hcround.symm) hcdead hcem
     (domain S.E S.hc (s + 1) .g2) (early S.E S.hc (s + 1) .g2)
-    ((action_delta_le_early S hR hcrlt).trans (early_le_domain S (s + 1))) hFP
-    (action_delta_le_early S hR hcrlt)
+    ((S.act_deadline_le_early c.val_index hcrlt).trans (early_le_domain S (s + 1))) hFP
+    (S.act_deadline_le_early c.val_index hcrlt)
   exact ⟨c, hcround, Finset.mem_filter.mpr ⟨hcraw, hcready⟩⟩
 
 /-- **The supporter inclusion at the formation round.** -/
@@ -283,10 +268,11 @@ private theorem stage2_voters_positive (S : Setup V) (rho : NamedRun V) (b0 b1 :
   have auth := hexec.core.toNamedUnforgeable
   have roots := hexec.core.toNamedRootCollisionFree
   have hR : 3 ≤ S.hc.R := S.hc.R_ge_three
-  have hfirst : S.a (s + 1 - 1) < b0 := by
-    simpa only [Nat.add_sub_cancel] using
-      lt_of_add_pos_le (S.a s) S.E.Δ b0 S.E.Δ_pos
-        (le_trans (Int.add_le_add_right (Assembly.a_mono S (Nat.le_succ s)) S.E.Δ) hmargin)
+  have hfirst : ∀ v, (S.node v).act (s + 1 - 1) < b0 :=
+    base_actions_before_of_early S b0 (s + 1) (Nat.succ_pos s)
+      ((early_le_domain S (s + 1)).trans
+        ((FrameForward.domain_le_a S (s + 1) .g2).trans
+          (stage2_a_succ_le S s b0 hmargin)))
   intro u hu
   have huh : u ∈ rho.honest := (Finset.mem_filter.mp hu).1
   refine Finset.mem_filter.mpr ⟨Finset.mem_univ u, ?_⟩
@@ -359,10 +345,11 @@ private theorem stage2_opposition_stale (S : Setup V) (rho : NamedRun V) (b0 b1 
   have auth := hexec.core.toNamedUnforgeable
   have roots := hexec.core.toNamedRootCollisionFree
   have hR : 3 ≤ S.hc.R := S.hc.R_ge_three
-  have hfirst : S.a (s + 1 - 1) < b0 := by
-    simpa only [Nat.add_sub_cancel] using
-      lt_of_add_pos_le (S.a s) S.E.Δ b0 S.E.Δ_pos
-        (le_trans (Int.add_le_add_right (Assembly.a_mono S (Nat.le_succ s)) S.E.Δ) hmargin)
+  have hfirst : ∀ v, (S.node v).act (s + 1 - 1) < b0 :=
+    base_actions_before_of_early S b0 (s + 1) (Nat.succ_pos s)
+      ((early_le_domain S (s + 1)).trans
+        ((FrameForward.domain_le_a S (s + 1) .g2).trans
+          (stage2_a_succ_le S s b0 hmargin)))
   intro u hu
   by_cases huh : u ∈ rho.honest
   · refine Finset.mem_union_right _ ?_
@@ -383,7 +370,7 @@ private theorem stage2_opposition_stale (S : Setup V) (rho : NamedRun V) (b0 b1 
             (late S.E S.hc (s + 1) .g2) w S.hc.η_SG (s + 1) u huh hzraw
         have hvote : u ∈ honestRoundVoters S rho z.round :=
           (Proofs.NamedOutageInputs.honestRoundVoters_iff S rho u z.round).mpr
-            ⟨huh, a, hav, har, har ▸ haem⟩
+            ⟨huh, a, hav, har, by simpa only [hav, har] using haem⟩
         have hnot : u ∉ honestRoundVoters S rho (s + 1 - 1) := by
           simp only [Nat.add_sub_cancel]
           intro hv1

@@ -209,6 +209,70 @@ private theorem head_held_at_early
         exact post_event_held_at_strict_read S rho core.sorted
           (targetEarly) reader he heEarly hpost
 
+private theorem head_held_at_early_of_event
+    (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
+    (healthyCut : Time) (healthy : NamedHealthyPrefixDelivery S rho healthyCut)
+    (source : V) (hsource : source ∈ rho.honest) (reader : V) (hreader : reader ∈ rho.honest)
+    (H : NamedBlock V) (sourceCut targetEarly targetRead : Time)
+    (n : Nat) (e : NamedEvent V) (he : rho.events[n]? = some e)
+    (ht : e.time = sourceCut)
+    (hHsource : H ∈ (NamedRun.stateBefore S rho (n + 1) source).st.bodies)
+    (hDeadline : sourceCut + S.E.Δ ≤ targetEarly) (hOrder : targetEarly ≤ targetRead)
+    (hHealthy : targetEarly ≤ healthyCut)
+    (hF : Block.Preceq (NamedRun.stateBeforeTime S rho targetRead reader).st.core.F H.erase) :
+    H ∈ (NamedRun.stateBeforeTime S rho targetEarly reader).st.bodies := by
+  by_cases hgen : H = NamedBlock.genesis
+  · subst H
+    exact (Proofs.NamedRuntime.stateBeforeTime_invariants S rho (targetEarly) reader).1.1.1.2.2.1.1
+  · rcases NamedOutageProvenance.held_block_origin S rho (n + 1) source hHsource with
+      hgen' | ⟨i, hin, ta, hacc⟩
+    · exact False.elim (hgen hgen')
+    · obtain ⟨eSource, heSource, _, htSource⟩ := hacc.1.2
+      have hta : ta ≤ sourceCut := by
+        have hin' : i ≤ n := Nat.le_of_lt_succ hin
+        rcases lt_or_eq_of_le hin' with hlt | rfl
+        · obtain ⟨hiLen, hiGet⟩ := List.getElem?_eq_some_iff.mp heSource
+          obtain ⟨hnLen, hnGet⟩ := List.getElem?_eq_some_iff.mp he
+          have hkey := (List.pairwise_iff_getElem.mp core.sorted) i n hiLen hnLen hlt
+          rw [hiGet, hnGet] at hkey
+          simpa only [htSource, ht] using time_le_of_key_le hkey
+        · have heq := Option.some.inj (heSource.symm.trans he)
+          simpa only [heq, ht] using htSource.symm.le
+      have hdeadline : ta + S.E.Δ ≤ targetEarly :=
+        (Int.add_le_add_right hta S.E.Δ).trans hDeadline
+      have htaEarly : ta < targetEarly :=
+        (lt_add_of_pos_right ta S.E.Δ_pos).trans_le hdeadline
+      have hcut : targetEarly ≤ healthyCut := hHealthy
+      by_cases hskip : H ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.bodies
+      · exact post_event_held_at_strict_read S rho core.sorted
+          (targetEarly) reader heSource
+          (by simpa only [htSource] using htaEarly) hskip
+      · have hmissing :
+            NamedReceipt.processed (NamedRun.stateBefore S rho (i + 1) reader).st (.block H) =
+              false := by
+          simpa only [NamedReceipt.processed, decide_eq_false_iff_not] using hskip
+        have hguard := not_excludes_of_F_preceq_later_time S rho core.sorted
+          (hdeadline.trans hOrder) hF
+        obtain ⟨td, hlo, hhi, j, hcall⟩ := healthy.relay_block source hsource i H ta hacc
+          reader hreader hmissing (hdeadline.trans hcut) hguard
+        obtain ⟨e, he, _, het⟩ := hcall.2
+        have htdEarly : td < targetEarly := hhi.trans_le hdeadline
+        have heEarly : e.time < targetEarly := by simpa only [het] using htdEarly
+        have heDomain : e.time < targetRead := heEarly.trans_le hOrder
+        have hindex := post_index_le_strict_filter_length rho core.sorted
+          (targetRead) he heDomain
+        have hFmono := Proofs.NamedRuntime.stateBefore_F_mono S rho reader
+          ((Nat.le_succ j).trans hindex)
+        have hFcall : Block.Preceq (NamedRun.stateBefore S rho j reader).st.core.F H.erase := by
+          apply Block.preceq_trans hFmono
+          rw [← strict_read_eq_index S rho core.sorted (targetRead)]
+          exact hF
+        have hpost := NamedRelayGuards.handled_block_held_of_finalized_prefix S rho
+          core.toNamedScheduleWellFormed core.toNamedDeliveryWellFormed
+          core.toNamedRootCollisionFree hacc hcall hlo hFcall
+        exact post_event_held_at_strict_read S rho core.sorted
+          (targetEarly) reader he heEarly hpost
+
 private theorem head_held_at_early_after_gst
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
     (source : V) (hsource : source ∈ rho.honest) (reader : V)
@@ -300,6 +364,41 @@ theorem healthy_head_body_at_read
   unfold stampedBefore at hStamp ⊢
   rw [hCarry]
   exact hStamp
+
+/-- A body held after an actual event is relayed by the existing healthy
+prefix rule, including a proposal accepted in that same event. Its acceptance
+time is at most the source cut, and strict receipt delay gives the strict
+reader cutoff (PROTOCOL.md `sec:public-handlers`). -/
+theorem healthy_head_body_at_read_of_event
+    (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
+    (healthyCut : Time) (healthy : NamedHealthyPrefixDelivery S rho healthyCut)
+    (source : V) (hsource : source ∈ rho.honest) (reader : V) (hreader : reader ∈ rho.honest)
+    (H : NamedBlock V) (sourceCut targetEarly targetRead : Time)
+    (n : Nat) (e : NamedEvent V) (he : rho.events[n]? = some e)
+    (ht : e.time = sourceCut)
+    (hHsource : H ∈ (NamedRun.stateBefore S rho (n + 1) source).st.bodies)
+    (hDeadline : sourceCut + S.E.Δ ≤ targetEarly) (hOrder : targetEarly ≤ targetRead)
+    (hHealthy : targetEarly ≤ healthyCut)
+    (hF : Block.Preceq (NamedRun.stateBeforeTime S rho targetRead reader).st.core.F H.erase) :
+    H ∈ (NamedRun.stateBeforeTime S rho targetRead reader).st.bodies ∧
+      stampedBefore (NamedRun.stateBeforeTime S rho targetRead reader).st.core.timestamp_block
+        targetEarly H.erase = true ∧
+      Block.find? (NamedRun.stateBeforeTime S rho targetRead reader).st.core.T H.erase.root =
+        some H.erase := by
+  have hEarly := head_held_at_early_of_event S rho core healthyCut healthy source hsource
+    reader hreader H sourceCut targetEarly targetRead n e he ht hHsource hDeadline
+    hOrder hHealthy hF
+  have hStamp := NamedBlockStamp.held_body_stampedBefore_stateBeforeTime S rho
+    core.toNamedScheduleWellFormed reader targetEarly H hEarly
+  obtain ⟨hHeld, hCarry⟩ := strict_body_stamp_carry S rho core.toNamedScheduleWellFormed
+    reader hOrder H hEarly
+  refine ⟨hHeld, ?_, held_find_at_strict S rho core.toNamedScheduleWellFormed
+    core.toNamedRootCollisionFree reader hreader targetRead H hHeld⟩
+  unfold stampedBefore at hStamp ⊢
+  rw [hCarry]
+  exact hStamp
+
+#print axioms healthy_head_body_at_read_of_event
 
 /-- Reusable post-GST head relay. The source acceptance may precede GST; the
  synchrony deadline is therefore the model's `max` deadline, not `ta + Δ`. -/
