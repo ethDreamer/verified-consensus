@@ -156,6 +156,32 @@ standing diagnostics rule. If a protected statement turns out to genuinely
 require strict round history at `S.a r`, stop and report it as a finding
 rather than weakening anything.
 
+*Resolution of the Stage 2 base-case question (2026-10-29)*: the
+`Execution/RoundBase.lean:base_hpost` blocker is the mirror image of the
+history-contract one, and gets the mirror-image answer: the paper instant
+`S.a (r−1)` is not a valid boundary marker in this direction either. Its
+hypothesis `S.a (r−1) < b0` bought the conclusion by vacuity only because
+simultaneity made `S.a (r−1)` the unique prior-round emission time; under
+the window, actions also fall after the instant (your
+`scripts/VoteWindowLateBoundary.lean` example is accepted as establishing
+this). Restate the boundary hypothesis against the actual actions — the
+per-validator form `∀ v, (S.node v).act (r−1) < b0`, or its
+delivery-completed variant if that is what the body consumes — keeping `b0`
+and the conclusion's shape fixed, so the vacuity argument becomes honest
+again. Alongside it, prove the discharge lemma the consumers need: the
+strengthened hypothesis follows from P2 whenever `b0` is at or past round
+`r`'s early G2 cutoff, which is where `stage2_preBoundaryFrames_above` and
+the `StableCoverageConsumer` base invariant place their boundaries (your own
+diagnostic already checks `act + Δ ≤` that cutoff). Do not invent a new
+non-vacuous confirmation claim from the outage premises unless a consumer's
+`b0` genuinely sits below the delivery-complete point — and if one does,
+stop and report it as a finding, because that would mean the outage argument
+itself leans on simultaneity. The point instance must again recover the
+original form: under `act = S.a`, the old hypothesis implies the new one, so
+existing instantiations go through unchanged; check this explicitly. Record
+the restatement and the example in `docs/MODELING_CHOICES.md` and handle the
+diagnostic per the standing rule.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
