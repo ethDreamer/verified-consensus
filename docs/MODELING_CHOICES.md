@@ -516,6 +516,38 @@ does not apply because `24 > b0 = 23`. The diagnostic checks this deadline
 gap with a valid window Setup. It does not construct a full outage run or
 claim that extra honest support breaks a coverage invariant.
 
+`first_round_straggler_handles_dichotomy` states the outage alternative
+without strengthening delivery: a receipt either satisfies the strict delay
+bound and precedes early G2, or is delayed but precedes `max send GST + Δ`.
+Both arms retain the broadcast premise's horizon and exclusion guards. The
+point-instance no-straggler lemma makes both arms vacuous.
+
+Exclusion from the first-included-round induction does not mean exclusion
+from a grade's input window. Round `r - 1` belongs to `latest_window η r`
+for every positive retention length. The support predicate examines all
+newer late-view tokens and requires their heads to cover the protected block.
+Thus the algebraic preservation contract needs a content fact as well as
+non-equivocation. `Protocol/Grades/HonestArrival.lean` proves that growing
+the ready views preserves support and cannot introduce opposition when
+every newly ready token covers the block and the enlarged raw view is clean.
+These are conditional helper theorems, not additional outage premises;
+their application to actual stragglers still requires an execution-level
+producer for the content fact.
+
+`scripts/VoteWindowStragglerCoverage.lean` checks why this condition cannot
+simply be omitted. In a one-validator grade view, a round-1 token confirms
+a non-genesis block `P`; adding a round-2 token confirming genesis removes
+support for `P` and introduces opposition in round 3. Both heads are known
+and compatible, and the sender has only one token per round. With `Δ = 1`,
+`R = 4`, `η = 2`, send time 39, and GST 48, the grade flips both for
+receipt 39 (strict delay, before early G2 at 43) and receipt 45 (outage delay,
+before late G2 at 47 and the network deadline 49). The diagnostic evaluates
+the actual `positive`, `opposing`, and `gradeBool` definitions. It does not
+construct an outage execution or prove that an honest duty can emit this
+newer head under all the base invariant's premises. Its conclusion is that
+timing, compatibility, and non-equivocation alone do not establish the
+required monotonicity; a proof of the straggler head floor is still needed.
+
 ## 12 Scope of this document
 
 This document covers the current model. It records no history of a choice, and

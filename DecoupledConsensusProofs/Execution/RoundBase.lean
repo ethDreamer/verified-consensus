@@ -122,6 +122,32 @@ theorem first_round_straggler_handles_after_gst (S : Setup V) (rho : NamedRun V)
   exact ⟨received, hlo,
     first_round_straggler_receipt_before S rho b0 r hmin hem hb har hhi, j, hcall⟩
 
+/-- The outage broadcast guarantee gives either a strict-delay receipt before
+the cutoff or an outage-delayed receipt before its actual network deadline.
+The second arm carries no early-cutoff bound (PROTOCOL.md `sec:public-handlers`). -/
+theorem first_round_straggler_handles_dichotomy (S : Setup V) (rho : NamedRun V)
+    (syn : NamedSynchrony S rho) (b0 : Time) (r : Round)
+    (hmin : ∀ q : Round, 0 < q → b0 ≤ S.a q → r ≤ q)
+    {v w : V} {a : NamedAttestation V} {t : Time}
+    (hv : v ∈ rho.honest) (hw : w ∈ rho.honest)
+    (hem : NamedRun.emits S rho v (.attest a) t)
+    (hb : b0 ≤ t) (har : a.round < r)
+    (hhor : max t S.E.t_GST + S.E.Δ ≤ rho.horizon)
+    (hexcl : NamedReceipt.excludes
+      (NamedRun.stateBeforeTime S rho (max t S.E.t_GST + S.E.Δ) w).st
+      (.attest a) = false) :
+    ∃ received : Time, t ≤ received ∧
+      ((received < t + S.E.Δ ∧ received < early S.E S.hc r .g2) ∨
+        (t + S.E.Δ ≤ received ∧ received < max t S.E.t_GST + S.E.Δ)) ∧
+      ∃ j : Nat, NamedRun.actualHandlesAt S rho j w (.attest a) received := by
+  obtain ⟨received, hlo, hhi, j, hcall⟩ :=
+    syn.broadcast v hv (.attest a) t hem w hw hhor hexcl
+  refine ⟨received, hlo, ?_, j, hcall⟩
+  by_cases hdelay : received < t + S.E.Δ
+  · exact Or.inl ⟨hdelay,
+      first_round_straggler_receipt_before S rho b0 r hmin hem hb har hdelay⟩
+  · exact Or.inr ⟨le_of_not_gt hdelay, hhi⟩
+
 /-- With the paper schedule there are no first-round stragglers, so the
 second case of the classification is empty (PROTOCOL.md `sec:healing-schedule`). -/
 theorem first_round_no_stragglers_point (S : Setup V) (rho : NamedRun V)
@@ -158,6 +184,7 @@ theorem base_hpost_point (S : Setup V) (rho : NamedRun V) (b0 : Time) (r : Round
 #print axioms base_hpost
 #print axioms base_hpost_point
 #print axioms first_round_older_deadline_before
+#print axioms first_round_straggler_handles_dichotomy
 #print axioms first_round_straggler_fields
 #print axioms first_round_straggler_receipt_before
 #print axioms first_round_straggler_handles_after_gst
