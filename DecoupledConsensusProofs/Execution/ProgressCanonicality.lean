@@ -69,7 +69,7 @@ theorem frontierQuorumWitness_stateBeforeTime_core
   obtain ⟨e, he, -, het⟩ := hacc.1.2
   have hreceived : received < t := by
     simpa only [het] using hbefore j e hj he
-  have hta : S.a a.round < t := hsend.trans_lt hreceived
+  have hta : (S.node a.val_index).act a.round < t := hsend.trans_lt hreceived
   have hheight : a.height_pair.erase.height? = some (pre.core.h_max - 1) := by
     cases hpair : a.height_pair with
     | empty =>
@@ -81,7 +81,7 @@ theorem frontierQuorumWitness_stateBeforeTime_core
           simpa only [hpair, NamedHeightPair.matchesEntry, decide_eq_true_eq] using hmatch
         cases timeout <;>
           simp [hpair, NamedHeightPair.erase, HeightPair.height?, hfields.1]
-  refine ⟨W, hW, Q, X, a, S.a a.round, hmaxW.symm.le, hQ, hX, ?_,
+  refine ⟨W, hW, Q, X, a, (S.node a.val_index).act a.round, hmaxW.symm.le, hQ, hX, ?_,
     haHonest, hemit, hta, hheight⟩
   exact Proofs.Bridges.erase_mem_chain_attestations W carrier hcarrier a ha
 

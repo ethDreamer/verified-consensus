@@ -1,6 +1,6 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
-public import DecoupledConsensusProofs.Protocol.Duties.Inputs.ActionSources
+public import DecoupledConsensusProofs.Protocol.ValidatorClient.WeakHeightBounds
 public import DecoupledConsensusProofs.Protocol.Handlers.StoreBridge
 public import DecoupledConsensusProofs.Execution.EmissionShape
 public import DecoupledConsensusProofs.Execution.Runtime
@@ -8,28 +8,12 @@ public import DecoupledConsensusProofs.Protocol.Handlers.HMaxCore
 
 @[expose] public section
 
-/-! # The named store's emitted-height bound ( companion)
+/-! # Height bounds at strict emission reads
 
-`honestEmittedHeight_le_honestHMaxAt` and `honestEmittedHeight_le_honestHMaxBeforeIndex`
-are proved on earlier over the retired `Protocol.round_action` / `DepReachableStore`
-route (`Proofs.HealingSurface.roundActionHeight_le_actionHMax` and its callers).
-`HMaxCoreRun.lean`'s own channel-1659 Open removes that route entirely: the
-named runtime never builds a `DepReachableStore` witness and the row is no
-longer a bare `Protocol.round_action` call.
-
-This module recovers both theorems over the named runtime instead, using the
-design note exports that already exist premise-free at every named read:
-`NamedActionSources.action_run_emission` (Q3b) identifies an actual emission
-with the action's own named row `Proofs.HealingSurface.actionAttestationAt`;
-`NamedActionSources.action_source` / `action_witness` (Q5/Q6) name the row's
-FG source as a retained named body; and `Proofs.NamedStoreBridge.heights_le_hMax_*`
-(itself a fold over the named tick, `NamedNumericStore.heights_bounded_*`)
-bounds every retained body's `derive_named` height by the read's own `h_max`.
-Composed, these replace `roundActionHeight_le_actionHMax` at the one read the
-row is actually built on; the rest of the argument (time monotonicity, the
-honest maximum) is earlier's own unchanged `HMaxCoreRun` machinery. -/
-
-
+The selected height source is already held before the emitting tick, including
+when a proposal shares that tick. The core bound supplies the strict-time
+conclusion; retention extends it to later event and time frontiers.
+-/
 
 namespace DecoupledConsensusModel
 namespace Proofs
@@ -41,47 +25,16 @@ open Protocol (derive_named)
 
 variable {V : Type} [DecidableEq V] [Fintype V]
 
-/-- A named height pair whose erasure has a height is a proper vote pair at
-that same height. -/
-private theorem heightPair_vote_of_height {hp : NamedHeightPair} {h : Height}
-    (he : hp.erase.height? = some h) :
-    ∃ entry timeout, hp = .vote h entry timeout := by
-  cases hp with
-  | empty => simp [NamedHeightPair.erase, HeightPair.height?] at he
-  | vote h' entry timeout =>
-    have hEq : h' = h := by
-      cases timeout <;>
-        simpa [NamedHeightPair.erase, HeightPair.height?] using he
-    exact ⟨entry, timeout, by rw [hEq]⟩
-
-/-- An honest row sent by an actual tick is no higher than the emitter's own
-strict pre-action frontier. Named twin of earlier's
-`Proofs.HealingSurface.honestEmittedHeight_le_localHMaxBeforeTime`, over
-`NamedActionSources.action_source` / `action_witness` and
-`Proofs.NamedStoreBridge.heights_le_hMax_stateBeforeTime` in place of the retired
-`Protocol.round_action` / `DepReachableStore` route. -/
+/-- A row sent by an actual tick is no higher than its emitter's strict
+pre-action frontier (PROTOCOL.md `sec:public-handlers`). -/
 theorem honestEmittedHeight_le_localHMaxBeforeTime
     (S : Setup V) {rho : Run V} (adm : Admissible S rho)
     {v : V} {a : NamedAttestation V} {t : Time} {h : Height}
     (hemit : rho.emits S v (Object.attest a) t)
     (hh : a.height_pair.erase.height? = some h) :
     h ≤ (rho.storeBeforeTime S v t).h_max := by
-  have sch : ScheduleWellFormed S rho := adm.toNamedAdmissibleCore.toNamedScheduleWellFormed
-  have ht : t = S.a a.round := (Proofs.Optimistic.emits_attest_shape S hemit).2
-  subst ht
-  have heq : a = Proofs.HealingSurface.actionAttestationAt S rho v a.round :=
-    ((NamedActionSources.action_run_emission S rho sch v a.round a).mp hemit).2.2
-  obtain ⟨entry, timeout, hvote⟩ := heightPair_vote_of_height hh
-  rw [heq] at hvote
-  obtain ⟨Cfg, hCfg, hheight, -⟩ :=
-    NamedActionSources.action_source S rho v a.round h entry timeout hvote
-  obtain ⟨C, hCmem, -, hCderiv, -⟩ :=
-    NamedActionSources.action_witness S rho v a.round Cfg hCfg
-  rw [hCderiv] at hheight
-  have hbound :=
-    Proofs.NamedStoreBridge.heights_le_hMax_stateBeforeTime S rho (S.a a.round) v C hCmem
-  rw [hheight] at hbound
-  exact hbound
+  exact WeakFG.honestEmittedHeight_le_localHMaxBeforeTime
+    S adm.toNamedAdmissibleCore hemit hh
 
 /-- Preserve the inclusive emission-time bound. -/
 theorem honestEmittedHeight_le_localHMax

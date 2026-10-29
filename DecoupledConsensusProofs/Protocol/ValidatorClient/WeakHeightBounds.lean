@@ -1,7 +1,7 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Protocol.Handlers.HMaxCore
-public import DecoupledConsensusProofs.Protocol.Duties.Inputs.ActionSources
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowHeightSources
 public import DecoupledConsensusProofs.Execution.EmissionShape
 public import DecoupledConsensusProofs.Protocol.Handlers.StoreBridge
 
@@ -46,22 +46,22 @@ theorem honestEmittedHeight_le_localHMaxBeforeTime
     (hemit : rho.emits S v (Object.attest a) t)
     (hh : a.height_pair.erase.height? = some h) :
     h ≤ (rho.storeBeforeTime S v t).h_max := by
-  have sch : ScheduleWellFormed S rho := adm.toNamedScheduleWellFormed
-  have htime := (Proofs.Optimistic.emits_attest_shape S hemit).2
-  rw [htime] at hemit
-  have heq : a = actionAttestationAt S rho v a.round :=
-    ((NamedActionSources.action_run_emission S rho sch v a.round a).mp hemit).2.2
+  have hval := (WindowAction.run_emission_fields S hemit).2.2
+  have hem : rho.emits S a.val_index (Object.attest a) t := by
+    simpa only [hval] using hemit
   obtain ⟨entry, timeout, hvote⟩ := heightPair_vote_of_height hh
-  rw [heq] at hvote
-  obtain ⟨Cfg, hCfg, hheight, -⟩ :=
-    NamedActionSources.action_source S rho v a.round h entry timeout hvote
-  obtain ⟨C, hCmem, -, hCderiv, -⟩ :=
-    NamedActionSources.action_witness S rho v a.round Cfg hCfg
-  rw [hCderiv] at hheight
-  have hbound :=
-    Proofs.NamedStoreBridge.heights_le_hMax_stateBeforeTime S rho (S.a a.round) v C hCmem
+  obtain ⟨i, C, K, hs, hheight, _⟩ :=
+    NamedWindowIntrinsicEntry.emitted_height_signed_source S rho hem hvote
+  have hC := NamedWindowHeightSources.signed_source_mem_before S rho hs
+  have hbound := NamedStoreBridge.heights_le_hMax_stateBefore S rho i a.val_index C hC
   rw [hheight] at hbound
-  simpa only [htime] using! hbound
+  have hread := NamedRuntime.tick_prefix_eq_strict S rho
+    adm.toNamedScheduleWellFormed.sorted adm.toNamedScheduleWellFormed.nodup hs.1
+  change h ≤ (NamedRun.stateBefore S rho i a.val_index).st.core.h_max at hbound
+  rw [hread] at hbound
+  have ht := (WindowAction.run_emission_fields S hem).1
+  simpa only [Run.storeBeforeTime, ht, hval] using! hbound
+
 
 theorem honestEmittedHeight_le_localHMax
     (S : Setup V) {rho : Run V} (adm : AdmissibleCore S rho)

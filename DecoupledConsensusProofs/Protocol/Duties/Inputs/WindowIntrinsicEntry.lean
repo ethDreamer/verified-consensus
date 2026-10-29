@@ -93,7 +93,7 @@ theorem emitted_height_signed_source_at (S : Setup V) (rho : NamedRun V)
   exact ⟨source, entry, hij ▸ hs, hh, hr⟩
 
 /-- The extracted source belongs to the run even when it was proposed in
-the same tick. The pre-tick store alone need not contain it. -/
+the same tick. This scope proof uses the post-tick inventory. -/
 theorem signed_source_entry_scope (S : Setup V) (rho : NamedRun V)
     {i : Nat} {a : NamedAttestation V} {source entry : NamedBlock V}
     (ha : a.val_index ∈ rho.honest)

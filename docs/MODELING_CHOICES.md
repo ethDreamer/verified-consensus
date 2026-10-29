@@ -725,6 +725,18 @@ read equality is checked separately by `actionEventRead_point`; downstream
 paper-read bridges still need to distinguish an actual emission from a tick
 that emits no attestation.
 
+The strict emission-height bound retains its original pre-time conclusion.
+`q2_capture_at_window_read` traces the actual Q2 to the emitter's earlier G2
+capture. `signed_source_mem_before` then places every selected height source
+in the strict pre-tick inventory: the Q2 arm follows retained ancestry; the
+clear-source arm follows live confirmation. If the proposal duty runs,
+confirmation cannot run at that same instant and live confirmation is
+unchanged. Otherwise the preceding duties retain exactly the old bodies.
+Erasure uniqueness in the post-event store identifies the named source with
+its pre-event body. Thus a proposal sharing an action tick does not increase
+the emitted height beyond the strict pre-tick `h_max`, even though other
+attestation fields can read the newly inserted proposal.
+
 The checked causal constructors are imported by the stable coverage consumer.
 Its remaining legacy producers, action-index histories and the complete
 output assembly are still being migrated; the complete library does not yet

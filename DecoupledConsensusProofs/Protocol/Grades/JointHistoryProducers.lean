@@ -5,6 +5,7 @@ public import DecoupledConsensusInternal.Definitions.NamedJointOutage
 public import DecoupledConsensusProofs.Execution.ViabilityHistory
 public import DecoupledConsensusProofs.Protocol.Grades.ReadyHeadReturn
 public import DecoupledConsensusProofs.Protocol.Duties.Inputs.IntrinsicEntry
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowAction
 public import DecoupledConsensusProofs.Protocol.Grades.CacheProvenance
 
 @[expose] public section
@@ -258,6 +259,83 @@ theorem q2_capture_at_action_read (S : Setup V) (rho : NamedRun V)
       refine ⟨j, raw, hj, he, hraw, ?_⟩
       exact Block.preceq_trans hqold (by rw [← hclip]; exact clip_preceq raw _)
   · exact absurd hQ (by simp)
+
+private theorem prepared_g2_from_old_window (S : Setup V) (v : V)
+    (before : NamedNodeState V) (s : Round) :
+    (cacheAtRound (preparedCache S before ((S.node v).act s)) s).g2 =
+      clipResult before.st.core.F (cacheAtRound before.cache s).g2 := by
+  let aligned := alignRound before.cache s
+  have hcurrent : aligned.current = cacheAtRound before.cache s := (align_current before.cache s).1
+  have hround : aligned.round = s := (align_current before.cache s).2
+  have htime : (S.node v).act s ≠ domain S.E S.hc s .g2 := ne_of_gt (lt_of_lt_of_le
+    (by have hd := S.E.Δ_pos
+        simp only [domain, Phase.domainOffset]
+        linarith : domain S.E S.hc s .g2 < domain S.E S.hc s .g0)
+    (S.act_post_completion v s))
+  unfold preparedCache NamedActionReads.preparedCache onPhaseTick
+  rw [S.act_round v s]
+  change (cacheAtRound (clipCache before.st.core.F
+    ⟨aligned.round,
+      completeFrame S.E S.hc before.st.core.toHealing aligned.round ((S.node v).act s) aligned.current,
+      completeFrame S.E S.hc before.st.core.toHealing (aligned.round + 1) ((S.node v).act s)
+        aligned.next⟩) s).g2 = _
+  simp only [cacheAtRound, clipCache, hround]
+  change clipResult before.st.core.F
+    (completeFrame S.E S.hc before.st.core.toHealing s ((S.node v).act s) aligned.current).g2 = _
+  rw [complete_frame_g2 S.E S.hc before.st.core.toHealing s
+    ((S.node v).act s) aligned.current htime, hcurrent]
+  rfl
+
+/-- The actual action read's `Q2` is below a G2 root this same
+validator froze at its own strictly earlier G2-domain tick. -/
+theorem q2_capture_at_window_read (S : Setup V) (rho : NamedRun V)
+    (i : Nat) (v : V) (r : Round) {q : Block V}
+    (hQ : Protocol.grade2_block_with
+        (NamedProfile.gradeContract (NamedActionReads.windowActionReadFrom S v
+          (NamedRun.stateBefore S rho i v) r).cache)
+        S.E S.hc (NamedActionReads.windowActionReadFrom S v
+          (NamedRun.stateBefore S rho i v) r).st.core.toHealing r =
+      some q) :
+    ∃ (j : Nat) (raw : Block V),
+      j < i ∧
+      rho.events[j]? = some (.tick v (domain S.E S.hc r .g2)) ∧
+      freezeRoot S.E (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
+        (NamedRun.stateBefore S rho j v).st.core.F S.hc.η_SG r
+        (early S.E S.hc r .g2) (late S.E S.hc r .g2) = some raw ∧
+      Block.Preceq q raw := by
+  set before := NamedRun.stateBefore S rho i v with hbefore
+  set n := NamedActionReads.windowActionReadFrom S v before r with hn
+  change grade2Block n.st.core.toHealing
+    (DecoupledConsensusModel.Protocol.readFrame n.cache n.st.core.toHealing r) = some q at hQ
+  unfold grade2Block at hQ
+  split at hQ
+  · rename_i hclosed
+    obtain ⟨clipped, hclipped, hactive⟩ := Option.bind_eq_some_iff.mp hQ
+    obtain ⟨inner, hfield, hinner⟩ := Option.bind_eq_some_iff.mp hclipped
+    change inner = some clipped at hinner
+    subst inner
+    have hqclip : Block.Preceq q clipped :=
+      (Finset.mem_filter.mp (Proofs.Engine.deepest?_mem hactive)).2
+    change clipResult n.st.core.F (cacheAtRound n.cache r).g2 = some (some clipped) at hfield
+    obtain ⟨prepared, hprepared, hqprep⟩ :=
+      clip_result_prefix n.st.core.F q clipped _ hfield hqclip
+    change (cacheAtRound (preparedCache S before ((S.node v).act r)) r).g2 =
+      some (some prepared) at hprepared
+    rw [prepared_g2_from_old_window S v before r] at hprepared
+    obtain ⟨old, hold, hqold⟩ :=
+      clip_result_prefix before.st.core.F q prepared _ hprepared hqprep
+    have hphase : phaseResult (cacheAtRound (NamedRun.stateBefore S rho i v).cache r) .g2 =
+        some (some old) := hold
+    rcases NamedCacheProvenance.completed_phase_origin S rho i v r .g2 (some old) hphase with
+      ⟨_, hzero⟩ | ⟨j, tt, hj, he, ht, hroot⟩
+    · exact absurd hzero (by simp)
+    · subst tt
+      obtain ⟨raw, hraw, hclip⟩ := Option.map_eq_some_iff.mp hroot.symm
+      refine ⟨j, raw, hj, he, hraw, ?_⟩
+      exact Block.preceq_trans hqold (by rw [← hclip]; exact clip_preceq raw _)
+  · exact absurd hQ (by simp)
+
+#print axioms q2_capture_at_window_read
 
 /-! ## 4c. Erased ancestry lifts to named ancestry inside the run scope -/
 
