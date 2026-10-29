@@ -69,6 +69,49 @@ theorem round_event_history
   exact ⟨hh, NamedEventConflictingCarrierBand.intrinsic_conflicting_carrier_band
     S rho b0 b1 s n P hexec hmargin hsleep hh⟩
 
+/-- A completed opening certificate extends the history before this round's
+G0 completion through all of its action events. Earlier-round actions already
+belong to the input history by P2 (PROTOCOL.md `sec:healing-schedule`). -/
+theorem extend_round_event_history
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (P : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
+    (hsleep : OutageSleepyThroughout S rho) (hP : NamedRun.blockInRun S rho P)
+    (hno : NoHonestConflictAbove S rho b0 P.erase)
+    (hheld0 : ∀ v ∈ rho.honest, P ∈ (NamedRun.stateBeforeTime S rho b0 v).st.bodies)
+    (hbefore : IntrinsicHighEntryHistoryIdx S rho P
+      (strictEventCut rho (domain S.E S.hc r .g0)))
+    (hsg : ∀ v ∈ rho.honest,
+      let n := NamedRun.readAt S rho (domain S.E S.hc r .g1) v
+      Block.Preceq P.erase n.st.core.F ∨
+        ∃ raw, (readFrame n.cache n.st.core.toHealing r).g2 = some (some raw) ∧
+          Block.Preceq P.erase raw) :
+    IntrinsicHighEntryHistoryIdx S rho P
+      (strictEventCut rho (domain S.E S.hc (r + 1) .g0)) := by
+  intro i
+  induction i using Nat.strong_induction_on with
+  | h i ih =>
+    intro hi a source entry ha hs
+    by_cases hold : i < strictEventCut rho (domain S.E S.hc r .g0)
+    · exact hbefore i hold a source entry ha hs
+    · by_cases hb : (S.node a.val_index).act a.round < b0
+      · exact NamedWindowIntrinsicEntry.signed_entry_pre_boundary S rho b0 P hP hno ha hs hb
+      · have hh : IntrinsicHighEntryHistoryIdx S rho P i := by
+          intro j hj a' source' entry' ha' hs'
+          exact ih j hj (hj.trans hi) a' source' entry' ha' hs'
+        have ht := NamedStrictEventCut.time_lt_of_lt_strictEventCut rho hexec.core.sorted
+          (domain S.E S.hc (r + 1) .g0) hi hs.1
+        have har : a.round ≤ r :=
+          Nat.lt_succ_iff.mp (S.round_lt_of_act_lt_domain a.val_index ht)
+        have heq : a.round = r := by
+          by_contra hne
+          have hlt : a.round < r := lt_of_le_of_ne har hne
+          exact hold (NamedStrictEventCut.lt_strictEventCut_of_time_lt rho hexec.core.sorted
+            (domain S.E S.hc r .g0) hs.1
+            (NamedStragglerEntryHistory.action_before_completion_of_round_lt S a.val_index hlt))
+        apply NamedStragglerEntryHistory.entry_compatible_of_opening S rho b0 b1 s P
+          hexec hmargin hsleep hP hheld0 hh ha hs (le_of_not_gt hb)
+        simpa only [heq] using hsg a.val_index ha
+
 /-- Restrict the causal producer to the original paper checkpoint. P1 permits
 current-round emissions in this strict prefix, and they are included here
 (PROTOCOL.md `sec:healing-schedule`). -/
@@ -111,6 +154,7 @@ theorem checkpoint_event_history_point
   exact ⟨hp, NamedEventConflictingCarrierBand.intrinsic_conflicting_carrier_band_point
     S rho b0 b1 s r P hexec hmargin hsleep hpoint hp⟩
 
+#print axioms extend_round_event_history
 #print axioms round_event_history
 #print axioms checkpoint_event_history
 #print axioms checkpoint_event_history_point

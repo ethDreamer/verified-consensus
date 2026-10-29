@@ -17,36 +17,12 @@ public import DecoupledConsensusInternal.Definitions.NamedJointOutage
 @[expose] public section
 
 /-!
-# L8: the round-invariant step, without the support carry
+# Round invariant assembly from completed opening certificates
 
-The `r → r + 1` step of `RoundInvariant`, minus the two fields the L5/L6 branches
-supply (`sg` and `common_support`, which are hypotheses here by design).
-
-The entry step is the 1294/1299 design. An honest row of round `r` names the
-entry of ITS OWN source chain, and the source is the FG source selected at that
-signer's action read. The action read is the round-`r` checkpoint followed by
-`update_confirmation_with`, which writes only `live_confirmed` and
-`latest_confirmed`; every field `readFrame`, `get_fg_root`,
-`get_filtered_block_tree` and `activeG2` consult is untouched, so all four agree
-at the two reads (definitionally — see the `rfl` proofs below). That makes
-`hinv.sg`, stated at the checkpoint, a statement about the signer's own
-selector inputs:
-
-* the signed row exists, so `fg_source_with` is `some source.erase`, which
-  forces `grade2_block_with … = some q`;
-* `grade2Block` and `activeG2` are the same `bind` of the frame's `g2` through
-  `activePrefix`, so `activeG2 S (checkpoint …) = some q`;
-* `hinv.sg` arm 2 therefore reads `P ⪯ q`, and arm 1 reads `P ⪯ fg_root`, which
-  gives `P ⪯ q` as well because `q` is a filtered-tree member;
-* `fg_source_with` returns `q` itself or a `deepest_clear` value above `q`, so
-  `q ⪯ source.erase` and hence `P.erase ⪯ source.erase`.
-
-Lifting that to `Pn ⪯ source` uses the erased-ancestor lift plus
-`NamedRootCollisionFree.root_injective`; `entry ⪯ source` and `Pn ⪯ source` are
-then comparable by structural induction on `source`.
-
-`hinv.fg` is not used by the entry step (arm 1 of `hinv.sg` already lands on the
-FG root), and `SlashableBound` is not reached anywhere in this module.
+The causal history before the next G0 completion suffices for reads within the
+current round. To read the next paper checkpoint, first extend that history
+using the next round's completed opening SG certificate. This includes honest
+actions before that paper instant (PROTOCOL.md `sec:healing-schedule`).
 -/
 
 namespace DecoupledConsensusModel.Proofs.NamedOutageClosure
@@ -286,7 +262,8 @@ theorem entry_compatible_of_carrierAbove
       NamedActionReads.actionReadAt, Internal.NamedOutageEntry.actionReadFrom, hprefix]
   have hvoter : a.val_index ∈ honestRoundVoters S rho a.round := by
     apply (Proofs.NamedOutageInputs.honestRoundVoters_iff S rho a.val_index a.round).2
-    exact ⟨ha, a, rfl, rfl, ⟨i, hi, hem⟩⟩
+    have ht := (WindowAction.run_emission_fields S ⟨i, hi, hem⟩).1
+    exact ⟨ha, a, rfl, rfl, ht ▸ ⟨i, hi, hem⟩⟩
   have hPcarrier := hcarriers a.val_index hvoter
   have hfgsrc0 := hfgsrc
   unfold Protocol.fg_source_with at hfgsrc
@@ -332,30 +309,18 @@ theorem entry_compatible_of_carrierAbove
 
 
 
-set_option linter.unusedVariables false in
-
-/-- `IntrinsicHighEntryHistory` carries from `r` to `r + 1`. Rows of rounds
-below `r` are `hinv.entry_history`; a row of round `r` is
-`round_entry_compatible`.
-
-`hslash`, `hmargin`, `hsleep` and `hno` are carried for signature fidelity and
-are discharged by `clear`: the entry step needs only `hexec` and the previous
-checkpoint. There is no inclusion condition at `r + 1` here — the step never
-reads one, and carrying it forced the interpolation branches to assume that the
-horizon reaches past round `r + 1`'s opening. -/
+/-- The completed invariant supplies causal entry history through all actions
+of round `r`, up to the next G0 completion (PROTOCOL.md `sec:grades`). -/
 theorem entry_history_step
     (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hslash : Internal.NamedOutageEntry.SlashableBound S rho)
     (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
     (hinv : RoundInvariant S rho b0 Pn r) :
-    IntrinsicHighEntryHistory S rho Pn (r + 1) := by
-  clear hslash hmargin hsleep hno
-  intro h entry he
-  obtain ⟨i, a, source, ha, har, hs, hheight⟩ := he
-  rcases Nat.lt_succ_iff_lt_or_eq.mp har with hlt | heq
-  · exact hinv.entry_history h entry ⟨i, a, source, ha, hlt, hs, hheight⟩
-  · exact round_entry_compatible S rho b0 b1 r Pn hexec hinv ha heq hs
+    IntrinsicHighEntryHistoryIdx S rho Pn
+      (strictEventCut rho (domain S.E S.hc (r + 1) .g0)) :=
+  hinv.entry_history
+
 
 
 
@@ -365,25 +330,57 @@ theorem band_step
     (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
     (hinv : RoundInvariant S rho b0 Pn r) :
-    IntrinsicConflictingCarrierBand S rho Pn (r + 1) :=
-  NamedConflictingCarrierBand.intrinsic_conflicting_carrier_band S rho b0 b1 s (r + 1) Pn
-    hexec hmargin hsleep
-    (entry_history_step S rho b0 b1 s r Pn hexec hslash hmargin hsleep hno hinv)
+    IntrinsicConflictingCarrierBandIdx S rho Pn
+      (strictEventCut rho (domain S.E S.hc (r + 1) .g0)) :=
+  hinv.conflicting_band
 
 
 
 
+
+/-- At the point instance, the causal next-G0 cut recovers the original
+strict prior-round entry and carrier producers (PROTOCOL.md `sec:grades`). -/
+theorem history_step_point
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
+    (hsleep : OutageSleepyThroughout S rho)
+    (hinv : RoundInvariant S rho b0 Pn r)
+    (hpoint : ∀ v q, (S.node v).act q = S.a q) :
+    IntrinsicHighEntryHistory S rho Pn (r + 1) ∧
+      IntrinsicConflictingCarrierBand S rho Pn (r + 1) := by
+  have hh : IntrinsicHighEntryHistory S rho Pn (r + 1) := by
+    intro h entry he
+    obtain ⟨i, a, source, ha, har, hs, _⟩ := he
+    have hws := (NamedWindowIntrinsicEntry.signed_source_at_point S rho hpoint
+      i a source entry).2 hs
+    have hi := NamedStrictEventCut.lt_strictEventCut_of_time_lt rho hexec.core.sorted
+      (domain S.E S.hc (r + 1) .g0) hws.1
+      (NamedStragglerEntryHistory.action_before_completion_of_round_lt S a.val_index har)
+    exact hinv.entry_history i hi a source entry ha hws
+  exact ⟨hh, NamedEventConflictingCarrierBand.intrinsic_conflicting_carrier_band_point
+    S rho b0 b1 s (r + 1) Pn hexec hmargin hsleep hpoint hh⟩
+
+/-- The next opening certificate closes the history before the unchanged next
+paper read (PROTOCOL.md `sec:healing-schedule`). -/
 theorem fg_step
     (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hslash : Internal.NamedOutageEntry.SlashableBound S rho)
     (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
     (hheld0 : ∀ w ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 w).st.bodies)
-    (hinv : RoundInvariant S rho b0 Pn r) (hnext : DomainIncluded S rho b0 (r + 1)) :
+    (hinv : RoundInvariant S rho b0 Pn r) (hnext : DomainIncluded S rho b0 (r + 1))
+    (hsg : ∀ v ∈ rho.honest,
+      let n := NamedRun.readAt S rho (domain S.E S.hc (r + 1) .g1) v
+      Block.Preceq Pn.erase n.st.core.F ∨
+        ∃ raw : Block V,
+          (readFrame n.cache n.st.core.toHealing (r + 1)).g2 = some (some raw) ∧
+          Block.Preceq Pn.erase raw) :
     ∀ v ∈ rho.honest, JointAt S rho Pn (r + 1) v := by
   intro v hv
-  have hband := band_step S rho b0 b1 s r Pn hexec hslash hmargin hsleep hno hinv
-  have hentry := entry_history_step S rho b0 b1 s r Pn hexec hslash hmargin hsleep hno hinv
+  have hext := NamedWindowRoundHistory.extend_round_event_history S rho b0 b1 s (r + 1)
+    Pn hexec hmargin hsleep hinv.prefix_scope hno hheld0 hinv.entry_history hsg
+  obtain ⟨hentry, hband⟩ := NamedWindowRoundHistory.checkpoint_event_history
+    S rho b0 b1 s (r + 1) Pn hexec hmargin hsleep hext
   have hL4 := fg_noninterference_after_boundary S rho b0 b1 s (r + 1) Pn hexec hslash hmargin
     hsleep hinv.prefix_scope hno hband hentry hheld0 v hv (S.a (r + 1)) hnext.2.1
     (le_refl _)
@@ -421,19 +418,59 @@ theorem roundInvariant_step_of_support
   prefix_scope := hinv.prefix_scope
   sg := hsg
   common_support := hsupport
-  fg := fun _hhor => fg_step S rho b0 b1 s r Pn hexec hslash hmargin hsleep hno hheld0 hinv hnext
-  source_history := NamedCheckpointRows.signed_source_history S rho (r + 1)
+  fg := fun _hhor => fg_step S rho b0 b1 s r Pn hexec hslash hmargin hsleep hno hheld0 hinv hnext hsg
+  source_history := NamedCheckpointRows.window_signed_source_history S rho
+    hexec.core.toNamedScheduleWellFormed _
   old_rows := fun _hhor v _hv _B hB =>
     NamedCheckpointRows.prior_carrier_rows_at_checkpoint S rho
       hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable v (r + 1) hB
   entry_history :=
-    entry_history_step S rho b0 b1 s r Pn hexec hslash hmargin hsleep hno hinv
+    NamedWindowRoundHistory.extend_round_event_history S rho b0 b1 s (r + 1) Pn
+      hexec hmargin hsleep hinv.prefix_scope hno hheld0 hinv.entry_history hsg
   conflicting_band :=
-    band_step S rho b0 b1 s r Pn hexec hslash hmargin hsleep hno hinv
+    NamedEventConflictingCarrierBand.intrinsic_conflicting_carrier_band S rho b0 b1 s _ Pn
+      hexec hmargin hsleep
+      (NamedWindowRoundHistory.extend_round_event_history S rho b0 b1 s (r + 1) Pn
+        hexec hmargin hsleep hinv.prefix_scope hno hheld0 hinv.entry_history hsg)
+
+/-- The support-based successor constructor recovers every original checkpoint
+field at the point instance (PROTOCOL.md `sec:healing-schedule`). -/
+theorem roundInvariant_step_of_support_point
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hslash : Internal.NamedOutageEntry.SlashableBound S rho)
+    (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
+    (hno : NoHonestConflictAbove S rho b0 Pn.erase)
+    (hheld0 : ∀ w ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 w).st.bodies)
+    (hinv : RoundInvariant S rho b0 Pn r) (hnext : DomainIncluded S rho b0 (r + 1))
+    (hsupport : ∃ supportBoundary : Time, ∃ supportRound : Round,
+      supportBoundary = min b0 (DecoupledConsensusModel.Protocol.early S.E S.hc (r + 1) DecoupledConsensusModel.Protocol.Phase.g2) ∧
+      supportRound ≤ r + 1 ∧
+      (∀ v ∈ rho.honest,
+        S.hc.round_of (NamedRun.stateBeforeTime S rho supportBoundary v).st.core.s =
+          supportRound) ∧
+      S.E.electorate.weightOf
+          ((Finset.univ \ rho.honest) ∪
+            commonStaleRisks S rho supportBoundary Pn supportRound (r + 1)) <
+        S.E.electorate.weightOf
+          (commonSupporters S rho supportBoundary Pn supportRound (r + 1)))
+    (hsg : ∀ v ∈ rho.honest,
+      let n := NamedRun.readAt S rho (domain S.E S.hc (r + 1) .g1) v
+      Block.Preceq Pn.erase n.st.core.F ∨
+        ∃ raw : Block V,
+          (DecoupledConsensusModel.Protocol.readFrame n.cache n.st.core.toHealing (r + 1)).g2 =
+            some (some raw) ∧
+          Block.Preceq Pn.erase raw)
+    (hpoint : ∀ v q, (S.node v).act q = S.a q) :
+    PointRoundInvariant S rho b0 Pn (r + 1) :=
+  roundInvariant_point S rho b0 b1 s (r + 1) Pn hexec hmargin hsleep hpoint
+    (roundInvariant_step_of_support S rho b0 b1 s r Pn hexec hslash hmargin hsleep
+      hno hheld0 hinv hnext hsupport hsg)
 
 /-! ## Post-GST support assembly -/
 
 
+#print axioms history_step_point
+#print axioms roundInvariant_step_of_support_point
 #print axioms entry_history_step
 #print axioms entry_compatible_of_carrierAbove
 #print axioms band_step

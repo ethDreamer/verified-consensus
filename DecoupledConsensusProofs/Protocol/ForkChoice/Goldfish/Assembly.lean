@@ -402,8 +402,8 @@ theorem stableWriteCoverage_of_invariant
     (hcapb1 : cap ≤ b1 + S.E.Δ)
     (hanchor : ∀ t : Time, b0 ≤ t → t ≤ cap → t ≤ rho.horizon →
       S.a (clockRoundAt S t) < b0 →
-        ∃ r : Round, IntrinsicConflictingCarrierBand S rho Pn r ∧
-          IntrinsicHighEntryHistory S rho Pn r ∧ t < S.a r) :
+        ∃ cut : Time, IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho cut) ∧
+          IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut) ∧ t < cut) :
     StableWriteCoverageWindow S rho b0 cap Pn.erase := by
   intro w hw u hb0 hcap hhor hpos hcut
   have hb0pos : 6 * S.E.Δ < b0 := six_delta_lt_b0 S s b0 hmargin
@@ -425,9 +425,9 @@ theorem stableWriteCoverage_of_invariant
         hexec hslash hmargin hsleep hscope hno
         (band_step S rho b0 b1 s (clockRoundAt S u) Pn hexec hslash hmargin hsleep hno hI)
         (entry_history_step S rho b0 b1 s (clockRoundAt S u) Pn hexec hslash hmargin
-          hsleep hno hI) hheld0 w hw u hb0 (le_of_lt (lt_a_succ_clockRound S u))
+          hsleep hno hI) hheld0 w hw u hb0 (le_of_lt (clockRound_lt_completion_succ S u))
     · obtain ⟨rL, hbandL, hentryL, hult⟩ := hanchor u hb0 hcap hhor (not_le.mp hpb)
-      exact fg_noninterference_after_boundary S rho b0 b1 s rL Pn hexec hslash hmargin
+      exact fg_noninterference_after_boundary S rho b0 b1 s (clockRoundAt S u + 1) Pn hexec hslash hmargin
         hsleep hscope hno hbandL hentryL hheld0 w hw u hb0 (le_of_lt hult)
   refine stableWriteAt_of_sg S rho hexec.core w hw Pn.erase (clockRoundAt S u) ?_ u rfl
     (opening_lt_support_cutoff S u hu0 hcut)

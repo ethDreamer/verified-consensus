@@ -3,6 +3,7 @@ public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.OutageInputs
 public import DecoupledConsensusProofs.Protocol.Schedule.Action
 public import DecoupledConsensusProofs.Execution.HealthyLocalFacts
+public import DecoupledConsensusProofs.Protocol.Grades.FrameForward
 public import DecoupledConsensusProofs.Protocol.Store.BoundaryRows
 
 @[expose] public section
@@ -27,47 +28,42 @@ is awake for that round. -/
 theorem honestRoundVoters_eq_awake
     (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) (k : Round)
-    (hk : S.a k ≤ rho.horizon) :
+    (hk : ∀ v ∈ rho.honest, (S.node v).act k ≤ rho.horizon) :
     honestRoundVoters S rho k = honestAwakeAt S rho k := by
   ext v
   constructor
   · intro hv
     obtain ⟨hvHon, ha⟩ :=
       (Proofs.NamedOutageInputs.honestRoundVoters_iff S rho v k).mp hv
-    obtain ⟨a, _, _, hem⟩ := ha
-    obtain ⟨_, hawake, _⟩ :=
-      (NamedActionSources.action_run_emission S rho sch v k a).mp hem
+    obtain ⟨a, _, hround, hem⟩ := ha
+    have hawake := (WindowAction.run_emission_fields S hem).2.1
+    rw [hround] at hawake
     exact Finset.mem_filter.mpr ⟨hvHon, hawake⟩
   · intro hv
     obtain ⟨hvHon, hawake⟩ := Finset.mem_filter.mp hv
-    have htick : ∃ i : Nat, rho.events[i]? =
-        some (NamedEvent.tick v (S.a k)) := by
-      obtain ⟨i, hi⟩ := List.mem_iff_getElem?.mp
-        (sch.tick_total v hvHon (S.a k) (Proofs.HealingLemmas.publicTime_a S k)
-          (Proofs.HealingLemmas.a_nonneg S k) hk)
-      exact ⟨i, hi⟩
-    have hem : NamedRun.emits S rho v
-        (.attest (Proofs.HealingSurface.actionAttestationAt S rho v k)) (S.a k) :=
-      (NamedActionSources.action_run_emission S rho sch v k _).mpr
-        ⟨htick, hawake, rfl⟩
+    have hem := WindowAction.honest_emits_action S sch hvHon k hawake (hk v hvHon)
     apply (Proofs.NamedOutageInputs.honestRoundVoters_iff S rho v k).mpr
-    exact ⟨hvHon, ⟨Proofs.HealingSurface.actionAttestationAt S rho v k,
-      Proofs.HealingSurface.actionAttestationAt_shape S rho v k |>.1,
-      Proofs.HealingSurface.actionAttestationAt_shape S rho v k |>.2.1, hem⟩⟩
+    refine ⟨hvHon, NamedActionReads.windowActionAttestationAt S rho v k, ?_, ?_, hem⟩
+    · exact S.node_val_index v
+    · exact WindowAction.actionRead_round S v _ k
 
-private theorem previous_action_le_domain
-    (S : Setup V) {r : Round} (hr : 0 < r) (p : Phase) :
-    S.a (r - 1) ≤ domain S.E S.hc r p := by
-  have hqr : r - 1 < r := Nat.sub_lt hr (by decide)
-  have hg2 : S.a (r - 1) ≤ domain S.E S.hc r .g2 :=
-    action_le_domain S S.hc.R_ge_three hqr
-  have hphase : domain S.E S.hc r .g2 ≤ domain S.E S.hc r p := by
-    unfold DecoupledConsensusModel.Protocol.domain
-    cases p <;> simp only [Phase.domainOffset]
-    all_goals
-      exact Int.add_le_add_left
-        (Int.mul_le_mul_of_nonneg_right (by norm_num) S.E.Δ_pos.le) _
-  exact hg2.trans hphase
+/-- At the point schedule the original paper-time horizon hypothesis suffices
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem honestRoundVoters_eq_awake_point
+    (S : Setup V) (rho : NamedRun V) (sch : NamedScheduleWellFormed S rho) (k : Round)
+    (hpoint : ∀ v q, (S.node v).act q = S.a q) (hk : S.a k ≤ rho.horizon) :
+    honestRoundVoters S rho k = honestAwakeAt S rho k :=
+  honestRoundVoters_eq_awake S rho sch k (by intro v _; simpa only [hpoint] using hk)
+
+/-- P2 puts every older action before every grade-domain cutoff of this round
+(PROTOCOL.md `sec:healing-schedule`). -/
+private theorem prior_action_le_domain
+    (S : Setup V) (v : V) {k r : Round} (hkr : k < r) (p : Phase) :
+    (S.node v).act k ≤ domain S.E S.hc r p := by
+  have hp := S.act_deadline_le_early v hkr
+  have hd := S.E.Δ_pos
+  simp only [early, Phase.earlyOffset] at hp
+  cases p <;> simp only [domain, Phase.domainOffset] <;> linarith
 
 private theorem honestAwakeAt_subset_window
     (S : Setup V) (rho : NamedRun V) {r : Round} (hr : 0 < r) :
@@ -101,13 +97,20 @@ theorem outageSleepyThroughout_of_awake
 /-- A covered round puts its preceding action, and therefore all older eligible
 actions, inside the run horizon. This is the schedule fact needed to replace
 historical emissions by the awake profile. -/
+private theorem prior_action_in_horizon
+    (S : Setup V) (rho : NamedRun V) {k r : Round} (hkr : k < r)
+    (hcovered : RoundCovered S rho r) (v : V) :
+    (S.node v).act k ≤ rho.horizon := by
+  rcases hcovered with haction | ⟨p, _, hdomain⟩
+  · exact (prior_action_le_domain S v hkr .g2).trans
+      ((FrameForward.domain_le_a S r .g2).trans haction.2)
+  · exact (prior_action_le_domain S v hkr p).trans hdomain
+
 private theorem previous_action_in_horizon
     (S : Setup V) (rho : NamedRun V) {r : Round} (hr : 0 < r)
     (hcovered : RoundCovered S rho r) :
-    S.a (r - 1) ≤ rho.horizon := by
-  rcases hcovered with haction | ⟨p, _, hdomain⟩
-  · exact (Assembly.a_mono S (Nat.sub_le r 1)).trans haction.2
-  · exact (previous_action_le_domain S hr p).trans hdomain
+    ∀ v ∈ rho.honest, (S.node v).act (r - 1) ≤ rho.horizon :=
+  fun v _ => prior_action_in_horizon S rho (Nat.sub_lt hr (by decide)) hcovered v
 
 /-- The awake and emitted versions of the stale historical voter set coincide
 at every covered positive round. -/
@@ -116,17 +119,15 @@ private theorem staleHistoricalVoters_eq_awake
     (sch : NamedScheduleWellFormed S rho) {r : Round} (hr : 0 < r)
     (hcovered : RoundCovered S rho r) :
     staleHistoricalVoters S rho r = staleAwake S rho r := by
-  have hprev : S.a (r - 1) ≤ rho.horizon :=
+  have hprev : ∀ v ∈ rho.honest, (S.node v).act (r - 1) ≤ rho.horizon :=
     previous_action_in_horizon S rho hr hcovered
   have hround : ∀ k : Round,
       k ∈ (Finset.range r).filter
         (fun k => r - S.hc.η_SG ≤ k ∧ k + 1 < r) →
-      S.a k ≤ rho.horizon := by
+      ∀ v ∈ rho.honest, (S.node v).act k ≤ rho.horizon := by
     intro k hk
     obtain ⟨_, ⟨_, hklt⟩⟩ := Finset.mem_filter.mp hk
-    have hkprev : k ≤ r - 1 :=
-      Nat.le_sub_one_of_lt (Nat.lt_of_succ_lt hklt)
-    exact (Assembly.a_mono S hkprev).trans hprev
+    exact fun v _ => prior_action_in_horizon S rho (Nat.lt_of_succ_lt hklt) hcovered v
   have hprevVoters : honestRoundVoters S rho (r - 1) =
       honestAwakeAt S rho (r - 1) :=
     honestRoundVoters_eq_awake S rho sch (r - 1) hprev
@@ -185,6 +186,7 @@ theorem gradeFormingMajority_of_awakeAt
   rw [hstale, hprev]
   exact hawake
 
+#print axioms honestRoundVoters_eq_awake_point
 #print axioms honestRoundVoters_eq_awake
 #print axioms outageSleepyThroughout_of_awake
 #print axioms gradeFormingThroughout_of_awake

@@ -619,6 +619,15 @@ theorem clockRound_lt_opening_succ (S : Setup V) (t : Time) :
   have hnat : S.E.slotOf t / S.hc.R + 1 ≤ S.E.slotOf t / S.hc.R := hdiv
   exact absurd hnat (ip_nat_no_succ_le _)
 
+/-- A read precedes the next round's G0 completion, so that causal history
+covers both strict and inclusive reads (PROTOCOL.md `sec:healing-schedule`). -/
+theorem clockRound_lt_completion_succ (S : Setup V) (t : Time) :
+    t < domain S.E S.hc (clockRoundAt S t + 1) .g0 := by
+  have hopen := clockRound_lt_opening_succ S t
+  have hd := S.E.Δ_pos
+  simp only [domain, Phase.domainOffset, one_mul]
+  linarith
+
 /-- A time inside round `r`'s own span has clock round `r`. -/
 theorem clockRoundAt_eq (S : Setup V) (t : Time) (r : Round) (ht0 : (0 : Time) ≤ t)
     (hlo : opening S.E S.hc r ≤ t) (hhi : t < opening S.E S.hc (r + 1)) :
@@ -1314,8 +1323,8 @@ theorem candidateReadCoverage_of_invariant
     (hcapb1 : cap ≤ b1 + S.E.Δ)
     (hanchor : ∀ t : Time, b0 ≤ t → t ≤ cap → t ≤ rho.horizon →
       S.a (clockRoundAt S t) < b0 →
-        ∃ r : Round, IntrinsicConflictingCarrierBand S rho Pn r ∧
-          IntrinsicHighEntryHistory S rho Pn r ∧ t < S.a r) :
+        ∃ cut : Time, IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho cut) ∧
+          IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut) ∧ t < cut) :
     CandidateReadCoverage S rho b0 cap Pn.erase := by
   intro w hw u hb0 hcap hhor _hpos hcut
   have hb0pos : 6 * S.E.Δ < b0 := six_delta_lt_b0 S s b0 hmargin
@@ -1338,9 +1347,9 @@ theorem candidateReadCoverage_of_invariant
         hexec hslash hmargin hsleep hscope hno
         (band_step S rho b0 b1 s (clockRoundAt S u) Pn hexec hslash hmargin hsleep hno hI)
         (entry_history_step S rho b0 b1 s (clockRoundAt S u) Pn hexec hslash hmargin
-          hsleep hno hI) hheld0 w hw u hb0 (le_of_lt (lt_a_succ_clockRound S u))
+          hsleep hno hI) hheld0 w hw u hb0 (le_of_lt (clockRound_lt_completion_succ S u))
     · obtain ⟨rL, hbandL, hentryL, hult⟩ := hanchor u hb0 hcap hhor (not_le.mp hpb)
-      exact fg_noninterference_after_boundary S rho b0 b1 s rL Pn hexec hslash hmargin
+      exact fg_noninterference_after_boundary S rho b0 b1 s (clockRoundAt S u + 1) Pn hexec hslash hmargin
         hsleep hscope hno hbandL hentryL hheld0 w hw u hb0 (le_of_lt hult)
   refine candidate_at_cutoff_of_sg S rho hexec.core w hw Pn.erase (clockRoundAt S u) ?_ u
     rfl (opening_lt_support_cutoff S u hu0 hcut)
@@ -1365,8 +1374,8 @@ theorem entryPrefixOutputs_upTo_of_invariant
     (hcapb1 : cap ≤ b1 + S.E.Δ)
     (hanchor : ∀ t : Time, b0 ≤ t → t ≤ cap → t ≤ rho.horizon →
       S.a (clockRoundAt S t) < b0 →
-        ∃ r : Round, IntrinsicConflictingCarrierBand S rho Pn r ∧
-          IntrinsicHighEntryHistory S rho Pn r ∧ t < S.a r)
+        ∃ cut : Time, IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho cut) ∧
+          IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho cut) ∧ t < cut)
     (hstabcov : ReadStableCoverage S rho b0 cap Pn.erase)
     (hcandcov : CandidateReadCoverage S rho b0 cap Pn.erase) :
     EntryPrefixOutputsUpTo S rho b0 cap Pn.erase := by
@@ -1391,9 +1400,9 @@ theorem entryPrefixOutputs_upTo_of_invariant
         Pn hexec hslash hmargin hsleep hscope hno
         (band_step S rho b0 b1 s (clockRoundAt S t) Pn hexec hslash hmargin hsleep hno hI)
         (entry_history_step S rho b0 b1 s (clockRoundAt S t) Pn hexec hslash hmargin
-          hsleep hno hI) hheld0 w hw t hb0 (lt_a_succ_clockRound S t)
+          hsleep hno hI) hheld0 w hw t hb0 (clockRound_lt_completion_succ S t)
     · obtain ⟨rL, hbandL, hentryL, htlt⟩ := hanchor t hb0 hcap hhor (not_le.mp hpb)
-      exact fg_noninterference_after_boundary_readAt S rho b0 b1 s rL Pn hexec hslash
+      exact fg_noninterference_after_boundary_readAt S rho b0 b1 s (clockRoundAt S t + 1) Pn hexec hslash
         hmargin hsleep hscope hno hbandL hentryL hheld0 w hw t hb0 htlt
   have hmain := read_conjuncts_of_sg S rho hexec.core w hw Pn.erase (clockRoundAt S t)
     (Nat.lt_of_lt_of_le (Nat.succ_pos s) (succ_le_clockRound S s b0 t hmargin hb0)) t ht0

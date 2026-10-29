@@ -685,10 +685,27 @@ support construction directly applies the same derived floor through
 `hpost`. Wiring the view-difference classification into other incremental
 coverage consumers remains separate work.
 
-The checked causal round constructors are imported by the stable coverage
-consumer. The full output assembly, older `RoundStep`/interpolation paths,
-participation horizon consumers and remaining action-index histories are
-still being migrated; the complete library does not yet build.
+The older support-based `RoundStep` constructor now extends history from the
+next round's G0 cut through that round's actions using its completed opening
+SG certificate. Only then does it prove FG at the unchanged next paper
+checkpoint. `history_step_point` recovers the original strict prior-round
+producers, and `roundInvariant_step_of_support_point` recovers every original
+checkpoint field. Interpolation and stable-write assembly use the next G0
+cut for reads inside a round; their pre-boundary anchor interface likewise
+requests a causal time cut covering the read.
+
+Awake/emitted voter equality requires each honest validator's actual action
+inside the horizon. Its covered-round consumers derive these bounds for all
+older actions from P2 and their existing phase or paper cutoffs. For example,
+when a current round's opening is covered but a validator's current action
+is later than the horizon, only prior-round voters are equated with the awake
+profile; P2 puts those actions before that opening. The explicit point
+corollary restores the original `S.a k ≤ horizon` hypothesis.
+
+The checked causal constructors are imported by the stable coverage consumer.
+Its remaining legacy producers, action-index histories and the complete
+output assembly are still being migrated; the complete library does not yet
+build.
 
 ## 12 Scope of this document
 
