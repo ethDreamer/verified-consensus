@@ -40,10 +40,69 @@ theorem windowRead_slot (S : Setup V) (v : V) (before : NamedNodeState V) (t : T
   split_ifs <;> simp only [NamedDuties.update_confirmation_with, update_confirmation_with,
     proposal_slot, vote_slot, NamedStore.setClock]
 
+/-- The input clock retains the time staged before the earlier duties. -/
+theorem windowRead_time (S : Setup V) (v : V) (before : NamedNodeState V) (t : Time) :
+    (windowReadFrom S v before t).st.core.t = t := by
+  have hp (gc : GradeContract V) (st : NamedStore V) :
+      (NamedDuties.propose_block_with gc S.E S.hc S.cfg (S.node v) st).1.core.t =
+        st.core.t := (named_propose_clock gc S.E S.hc S.cfg (S.node v) st).1
+  have hv (gc : GradeContract V) (st : NamedStore V) :
+      (NamedDuties.goldfish_vote_with gc S.E S.hc (S.node v) st).1.core.t =
+        st.core.t := by
+    dsimp only [NamedDuties.goldfish_vote_with, goldfish_vote_with]
+    split_ifs
+    · exact on_goldfish_vote_checked_time S.E st.core _
+    · rfl
+  simp only [windowReadFrom]
+  split_ifs <;> simp only [NamedDuties.update_confirmation_with, update_confirmation_with,
+    hp, hv, NamedStore.setClock]
+
+/-- Properties preserved by the preceding duties hold at the attestation input. -/
+theorem windowRead_preserves (S : Setup V) (v : V) (before : NamedNodeState V)
+    (t : Time) (P : NamedStore V → Prop)
+    (hclock : ∀ st, P st → P (NamedStore.setClock S.E st t))
+    (hprop : ∀ st, P st → P (NamedDuties.propose_block_with
+      (NamedProfile.gradeContract (preparedCache S before t))
+      S.E S.hc S.cfg (S.node v) st).1)
+    (hgf : ∀ st, P st → P (NamedDuties.goldfish_vote_with
+      (NamedProfile.gradeContract (preparedCache S before t)) S.E S.hc (S.node v) st).1)
+    (hconf : ∀ st s, P st → P (NamedDuties.update_confirmation_with
+      (NamedProfile.gradeContract (preparedCache S before t)) S.E S.hc st s))
+    (h : P before.st) : P (windowReadFrom S v before t).st := by
+  dsimp only [windowReadFrom]
+  split_ifs <;> solve_by_elim (maxDepth := 10) [hclock, hprop, hgf, hconf]
+
+/-- Retained-body and confirmation invariants survive all earlier duties. -/
+theorem windowRead_invariant (S : Setup V) (v : V) (before : NamedNodeState V) (t : Time)
+    (h : NamedConfirmationMembership.Invariant S.E S.cfg before.st) :
+    NamedConfirmationMembership.Invariant S.E S.cfg (windowReadFrom S v before t).st := by
+  apply windowRead_preserves S v before t _
+    (fun st hs => NamedConfirmationMembership.invariant_clock S.E S.cfg st t hs)
+    (fun st hs => NamedConfirmationMembership.invariant_propose _ S.E S.hc S.cfg
+      (S.node v) st hs)
+    (fun st hs => NamedConfirmationMembership.invariant_goldfish_vote _ S.E S.hc S.cfg
+      (S.node v) st hs)
+    (fun st s hs => NamedConfirmationMembership.invariant_update _ S.E S.hc S.cfg st s hs) h
+
 /-- Window bounds make the actual attestation input belong to its declared round. -/
 theorem actionRead_round (S : Setup V) (v : V) (before : NamedNodeState V) (r : Round) :
     S.hc.round_of (windowActionReadFrom S v before r).st.core.s = r := by
   rw [windowActionReadFrom, windowRead_slot, S.act_round]
+
+/-- An awake action admits its row into the store after the preceding duties. -/
+theorem tick_store_at_action (S : Setup V) (v : V) (before : NamedNodeState V)
+    (r : Round) (hawake : (S.node v).awake r = true) :
+    (Execution.NamedNode.tick S v before ((S.node v).act r)).1.st =
+      let n := windowActionReadFrom S v before r
+      (NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
+        S.E S.hc (S.node v) n.st n.record).1 := by
+  have hround := actionRead_round S v before r
+  change (Protocol.NamedTick.tick
+    (NamedProfile.gradeContract (preparedCache S before ((S.node v).act r)))
+    S.E S.hc S.cfg (S.node v) before.st before.record ((S.node v).act r)).1 = _
+  rw [NamedTick.tick_computed_duties]
+  simp only [windowActionReadFrom, windowReadFrom] at hround ⊢
+  simp only [hround, hawake, and_self, ite_true]
 
 omit [DecidableEq V] [Fintype V] in
 private theorem no_attest_proposal (p : Prop) [Decidable p]
@@ -90,6 +149,15 @@ theorem emitted_at_action_time (S : Setup V) (v : V) (before : NamedNodeState V)
   apply suffix_fields _ S v _ before.record t row _ ?_ h
   simp only [List.mem_append, no_attest_vote, or_false]
   exact no_attest_proposal _ _ row
+
+/-- A run emission identifies its author's action without schedule assumptions. -/
+theorem run_emission_fields (S : Setup V) {rho : Run V} {v : V}
+    {t : Time} {row : NamedAttestation V}
+    (h : NamedRun.emits S rho v (.attest row) t) :
+    t = (S.node v).act row.round ∧ (S.node v).awake row.round = true ∧
+      row.val_index = v := by
+  obtain ⟨i, _, hm⟩ := h
+  exact emitted_at_action_time S v (NamedRun.stateBefore S rho i v) t row hm
 
 /-- Exactly the selected attestation is emitted at an awake action tick, even
 when proposal or Goldfish emissions share that tick. -/
