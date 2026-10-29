@@ -185,8 +185,11 @@ theorem awake_window_row_head (S : Setup V) (rho : NamedRun V)
       a.val_index = w ∧ a.round = k ∧
       H ∈ (NamedRun.stateBefore S rho i w).st.bodies ∧ a.confirmed = some H.root := by
   obtain ⟨a, hval, har, hem⟩ := honest_awake_emits S rho sch w hw k hawake hhor
-  obtain ⟨i, hi, -, H, hH, hkey⟩ := OutageInputs.emitted_attestation_head S rho hem
-  exact ⟨i, a, H, hi, hem, hval, har, hH, hkey⟩
+  have hemRound : NamedRun.emits S rho w (.attest a) (S.a a.round) := by
+    simpa only [har] using hem
+  obtain ⟨i, hi, -, H, hH, hkey⟩ :=
+    OutageInputs.emitted_attestation_head_at_point S rho hemRound
+  exact ⟨i, a, H, by simpa only [har] using hi, hem, hval, har, hH, hkey⟩
 
 
 #print axioms awake_window_row_head

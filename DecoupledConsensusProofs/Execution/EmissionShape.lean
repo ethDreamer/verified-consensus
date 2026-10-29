@@ -38,7 +38,7 @@ variable {V : Type} [DecidableEq V] [Fintype V]
 theorem emits_attest_shape (S : Setup V) {rho : NamedRun V} {v : V}
     {a : NamedAttestation V} {t : Time}
     (h : NamedRun.emits S rho v (NamedObject.attest a) t) :
-    a.val_index = v ∧ t = S.a a.round := by
+    a.val_index = v ∧ t = (S.node v).act a.round := by
   obtain ⟨-, -, -, -, hval, -, ht, -⟩ :=
     Proofs.NamedOutageInputs.emitted_attestation_stages S rho h
   exact ⟨hval, ht⟩
@@ -60,10 +60,12 @@ theorem emits_attest_duty (S : Setup V) {rho : NamedRun V} {v : V}
     ∃ i : Nat, rho.events[i]? = some (.tick v t) ∧
       (Protocol.NamedDuties.attest_with
         (NamedProfile.gradeContract
-          (actionReadFrom S (NamedRun.stateBefore S rho i v) a.round).cache)
+          (NamedActionReads.windowActionReadFrom S v
+            (NamedRun.stateBefore S rho i v) a.round).cache)
         S.E S.hc (S.node v)
-        (actionReadFrom S (NamedRun.stateBefore S rho i v) a.round).st
-        (actionReadFrom S (NamedRun.stateBefore S rho i v) a.round).record).2.2 = a := by
+        (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) a.round).st
+        (NamedActionReads.windowActionReadFrom S v
+          (NamedRun.stateBefore S rho i v) a.round).record).2.2 = a := by
   obtain ⟨i, hi, -, hduty, -, -, -, -⟩ :=
     Proofs.NamedOutageInputs.emitted_attestation_stages S rho h
   exact ⟨i, hi, hduty⟩
@@ -112,7 +114,7 @@ to the action of the round the row itself names. -/
 theorem a_of_attest_mem (S : Setup V) {rho : NamedRun V} {v : V}
     {a : NamedAttestation V} {t : Time}
     (h : NamedRun.emits S rho v (NamedObject.attest a) t) :
-    ∃ r : Round, t = S.a r :=
+    ∃ r : Round, t = (S.node v).act r :=
   ⟨a.round, (emits_attest_shape S h).2⟩
 
 /-- **The emitted row is the attest duty's own output** (earlier's
@@ -125,10 +127,12 @@ theorem attest_eq_of_mem_on_tick_emit (S : Setup V) {rho : NamedRun V} {v : V}
     ∃ i : Nat, rho.events[i]? = some (.tick v t) ∧
       (Protocol.NamedDuties.attest_with
         (NamedProfile.gradeContract
-          (actionReadFrom S (NamedRun.stateBefore S rho i v) a.round).cache)
+          (NamedActionReads.windowActionReadFrom S v
+            (NamedRun.stateBefore S rho i v) a.round).cache)
         S.E S.hc (S.node v)
-        (actionReadFrom S (NamedRun.stateBefore S rho i v) a.round).st
-        (actionReadFrom S (NamedRun.stateBefore S rho i v) a.round).record).2.2 = a :=
+        (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) a.round).st
+        (NamedActionReads.windowActionReadFrom S v
+          (NamedRun.stateBefore S rho i v) a.round).record).2.2 = a :=
   emits_attest_duty S h
 
 #print axioms a_of_attest_mem

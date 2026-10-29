@@ -282,7 +282,8 @@ private theorem honest_held_row_before_boundary
     (hD : D ∈ (NamedRun.stateBeforeTime S rho t reader).st.bodies)
     (hcarrier : NamedBlock.Preceq carrier D) {a : NamedAttestation V}
     (hrow : a ∈ carrier.attestations) (ha : a.val_index ∈ rho.honest) :
-    NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) ∧ S.a a.round < b0 := by
+    NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) ∧
+      (S.node a.val_index).act a.round < b0 := by
   obtain ⟨i, hread, hbefore⟩ := Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho hexec.core.sorted t
   rw [hread] at hD
   obtain ⟨j, hj, received, hacc, hsend, hem⟩ :=
@@ -320,7 +321,7 @@ private theorem justified_compatible_before_boundary
     have ha : a.val_index ∈ rho.honest := by simpa only [hv] using hsignerHon
     obtain ⟨hem, hsent⟩ := honest_held_row_before_boundary S rho b0 b1 hexec
       reader t ht hD hcarrier hrow ha
-    have hcompatible := hno.1 P hP rfl a (S.a a.round) ha hem hsent
+    have hcompatible := hno.1 P hP rfl a ((S.node a.val_index).act a.round) ha hem hsent
       _ J.root false hp J hJscope rfl
     have hraw := Proofs.NamedWire.erase_compatible hcompatible
     simpa only [hJE, hDJ] using hraw
@@ -385,7 +386,7 @@ private theorem held_conflicting_carrier_band_before_boundary
   obtain ⟨hem, hsent⟩ := honest_held_row_before_boundary S rho b0 b1 hexec
     reader t ht hD hcarrier hrow ha
   obtain ⟨timeout, hp⟩ := matching_vote a H X.root hm
-  have hcompatible := hno.1 P hP rfl a (S.a a.round) ha hem hsent
+  have hcompatible := hno.1 P hP rfl a ((S.node a.val_index).act a.round) ha hem hsent
     H X.root timeout hp X hXscope rfl
   simp only [NamedBlock.compatible, Bool.or_eq_true] at hcompatible
   rcases hcompatible with hPX | hXP

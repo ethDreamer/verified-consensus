@@ -43,7 +43,7 @@ private theorem tick_index_unique (rho : NamedRun V) (nodup : rho.events.Nodup)
 
 private theorem row_tick_time_eq_action (S : Setup V) (rho : NamedRun V)
     {u : V} {a : NamedAttestation V} {t : Time}
-    (hem : NamedRun.emits S rho u (.attest a) t) : t = S.a a.round := by
+    (hem : NamedRun.emits S rho u (.attest a) t) : t = (S.node u).act a.round := by
   obtain ⟨_, _, _, _, _, _, htime, _⟩ :=
     Proofs.NamedOutageInputs.emitted_attestation_stages S rho hem
   exact htime
@@ -65,7 +65,8 @@ private theorem emission_index_le_self_proposed_carrier_aux
   induction j using Nat.strong_induction_on with
   | h j IH =>
     intro v t B hj hemB a ha hu k t' hk hemit ht'
-    have ht'eq : t' = S.a a.round := row_tick_time_eq_action S rho ⟨k, hk, hemit⟩
+    have ht'eq : t' = (S.node a.val_index).act a.round :=
+      row_tick_time_eq_action S rho ⟨k, hk, hemit⟩
     have hcall := Proofs.NamedReceiptCallsBase.self_proposal_call S rho hj hemB
     dsimp only at hcall
     set before : Protocol.NamedStore V :=
@@ -109,7 +110,9 @@ private theorem emission_index_le_self_proposed_carrier_aux
           obtain ⟨-, -, -, -, hval, -, htimeV, -⟩ :=
             Proofs.NamedOutageInputs.emitted_attestation_stages S rho hemV
           have hveq : v = a.val_index := hval.symm
-          have httV : tt = t' := htimeV.trans ht'eq.symm
+          have httV : tt = t' := by
+            rw [hveq] at htimeV
+            exact htimeV.trans ht'eq.symm
           have hjtick' : rho.events[j']? = some (.tick a.val_index t') := by
             rw [← hveq, ← httV]; exact hjtick
           have hkj' : k = j' := tick_index_unique rho core.nodup hk hjtick'
@@ -128,7 +131,7 @@ private theorem emission_index_le_self_proposed_carrier_aux
             emission_index_lt_acceptance_carried_attest S rho core j' v Bc tt hjdeliv2 a haBc hu
           have hemK'' : NamedRun.emits S rho a.val_index (.attest a) t''' :=
             ⟨k'', hk''tick, hk''emit⟩
-          have ht'''eq : t''' = S.a a.round := row_tick_time_eq_action S rho hemK''
+          have ht'''eq : t''' = (S.node a.val_index).act a.round := row_tick_time_eq_action S rho hemK''
           have hk''tick' : rho.events[k'']? = some (.tick a.val_index t') := by
             rw [← ht'eq] at ht'''eq; rw [ht'''eq] at hk''tick; exact hk''tick
           have hkk'' : k = k'' := tick_index_unique rho core.nodup hk hk''tick'
@@ -159,7 +162,7 @@ private theorem emission_index_le_self_proposed_carrier_aux
           emission_index_lt_acceptance_carried_attest S rho core j' v Bc tt hjdeliv2 a haBc hu
         have hemK'' : NamedRun.emits S rho a.val_index (.attest a) t''' :=
           ⟨k'', hk''tick, hk''emit⟩
-        have ht'''eq : t''' = S.a a.round := row_tick_time_eq_action S rho hemK''
+        have ht'''eq : t''' = (S.node a.val_index).act a.round := row_tick_time_eq_action S rho hemK''
         have hk''tick' : rho.events[k'']? = some (.tick a.val_index t') := by
           rw [← ht'eq] at ht'''eq; rw [ht'''eq] at hk''tick; exact hk''tick
         have hkk'' : k = k'' := tick_index_unique rho core.nodup hk hk''tick'

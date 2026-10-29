@@ -286,7 +286,8 @@ theorem honest_held_row_before_cut (S : Setup V) (rho : NamedRun V)
     (cut : Time) (reader : V) {a : NamedAttestation V}
     (ha : a ∈ (NamedRun.stateBeforeTime S rho cut reader).st.sg_rows a.round)
     (hHon : a.val_index ∈ rho.honest) :
-    S.a a.round < cut ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+    (S.node a.val_index).act a.round < cut ∧
+      NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨i, hread, hbefore⟩ := Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho sch.sorted cut
   rw [hread] at ha
   obtain ⟨j, hj, t, hacc, hsend, hem⟩ :=
