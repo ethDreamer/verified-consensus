@@ -1,6 +1,6 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
-public import DecoupledConsensusProofs.Protocol.Duties.Inputs.IntrinsicEntry
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowIntrinsicEntry
 public import DecoupledConsensusProofs.Execution.OutageProvenance
 public import DecoupledConsensusProofs.Protocol.Handlers.RelayGuards
 
@@ -63,7 +63,7 @@ theorem prior_carrier_rows_at_checkpoint
     (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
     (reader : V) (r : Round) {B : NamedBlock V}
     (hB : B ∈ (checkpoint S rho reader r).st.bodies) :
-    PriorCarrierRows S rho r B := by
+    CheckpointCarrierRows S rho r B := by
   have hstrict : B ∈ (NamedRun.stateBeforeTime S rho (S.a r) reader).st.bodies := hB
   obtain ⟨i, hread, _hbefore⟩ :=
     Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho sch.sorted (S.a r)
@@ -71,6 +71,13 @@ theorem prior_carrier_rows_at_checkpoint
     rw [hread] at hstrict
     exact hstrict
   have hpc := (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1.1.1.2.2.1
+  refine ⟨?_, ?_⟩
+  · intro A hAB a ha hHon
+    obtain ⟨_, ht, i, hi, hem⟩ :=
+      NamedOutageProvenance.honest_held_ancestor_row_before_time
+        S rho sch auth reader (S.a r) hstrict hAB ha hHon
+    exact ⟨i, NamedStrictEventCut.lt_strictEventCut_of_time_lt rho sch.sorted
+      (S.a r) hi ht, hi, hem⟩
   intro A hAB
   have hA := ancestor_body_mem hpc hBi hAB
   have hguard := held_carried_guard S rho i reader hA
@@ -78,8 +85,35 @@ theorem prior_carrier_rows_at_checkpoint
   intro a ha
   refine ⟨row_round_of_guard S hguard ha, ?_⟩
   intro hHon
-  exact NamedOutageProvenance.honest_held_ancestor_row_before_action
-    S rho sch auth reader r hstrict hAB ha hHon
+  exact (NamedOutageProvenance.honest_held_ancestor_row_before_action
+    S rho sch auth reader r hstrict hAB ha hHon).1
+
+/-- At the point schedule, causal checkpoint rows recover the original strict
+round history without changing the paper read (PROTOCOL.md `sec:healing-schedule`). -/
+theorem prior_carrier_rows_at_checkpoint_point
+    (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (reader : V) (r : Round) {B : NamedBlock V}
+    (hB : B ∈ (checkpoint S rho reader r).st.bodies) :
+    PriorCarrierRows S rho r B := by
+  have hc := prior_carrier_rows_at_checkpoint S rho sch auth reader r hB
+  intro A hAB
+  refine ⟨(hc.2 A hAB).1, ?_⟩
+  intro a ha
+  refine ⟨((hc.2 A hAB).2 a ha).1, ?_⟩
+  intro hHon
+  obtain ⟨i, hin, hi, hem⟩ := hc.1 A hAB a ha hHon
+  have ht := NamedStrictEventCut.time_lt_of_lt_strictEventCut rho sch.sorted
+    (S.a r) hin hi
+  change (S.node a.val_index).act a.round < S.a r at ht
+  rw [hpoint] at ht hi hem
+  refine ⟨?_, i, hi, hem⟩
+  by_contra hn
+  exact (not_le_of_gt ht) (Assembly.a_mono S (Nat.le_of_not_gt hn))
+
+#print axioms prior_carrier_rows_at_checkpoint
+#print axioms prior_carrier_rows_at_checkpoint_point
 
 end DecoupledConsensusModel.Proofs.NamedCheckpointRows
 

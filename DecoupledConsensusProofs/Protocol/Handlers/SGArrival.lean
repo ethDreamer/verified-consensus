@@ -741,8 +741,8 @@ actual event prefix, then honest same-round uniqueness. Erasure/projection
 equality alone is not used as full-row injectivity. -/
 private theorem honest_input_pool_row (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
-    {a : NamedAttestation V} (ha : a.val_index ∈ rho.honest)
-    (hem : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round))
+    {a : NamedAttestation V} {sent : Time} (ha : a.val_index ∈ rho.honest)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) sent)
     (i : Nat) (reader : V) (input : Protocol.NamedStore V) (bound : Time)
     (hcoh : Proofs.NamedStore.Coherent S.E S.cfg input) (hd : Data bound input)
     (hpost : ∀ b : NamedAttestation V,
@@ -765,20 +765,19 @@ private theorem honest_input_pool_row (S : Setup V) (rho : NamedRun V)
   exact ⟨he.symm.trans (congrArg NamedAttestation.erase hna), by simpa only [hna] using hn⟩
 
 
-/-- **A delivered honest row is retained with its own payload** (
-generalised). Exposed for the delivery-to-pool wrapper in
-`NamedEmissionShape`: honesty plus the delivery window rule out every branch of
-the handler's guard,
-so no side condition reaches the caller. Statement unchanged. -/
-theorem honest_row_after_call (S : Setup V) (rho : NamedRun V)
+/-- The honest sender's full row is retained when its admission input is in
+its round; provenance rules out duplicate payloads (PROTOCOL.md `sec:public-handlers`). -/
+private theorem honest_row_after_input (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
-    {i : Nat} {reader : V} {a : NamedAttestation V} {td : Time}
-    (ha : a.val_index ∈ rho.honest)
-    (hem : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round))
-    (hcall : NamedRun.actualHandlesAt S rho i reader (.attest a) td)
-    (hlo : S.a a.round ≤ td) (hhi : td < S.a a.round + S.E.Δ) :
+    {a : NamedAttestation V} {sent : Time} (ha : a.val_index ∈ rho.honest)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) sent)
+    (i : Nat) (reader : V) (input : Protocol.NamedStore V) (td : Time)
+    (hcoh : Proofs.NamedStore.Coherent S.E S.cfg input) (hd : Data td input)
+    (hround : S.hc.round_of input.core.s = a.round)
+    (hpost : ∀ b : NamedAttestation V,
+      b ∈ (Protocol.NamedAdmission.admit_row S.hc input a).sg_rows b.round →
+      b ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows b.round) :
     a ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows a.round := by
-  obtain ⟨input, hcoh, hd, hround, hpost⟩ := actual_call_input S rho sch hcall hlo hhi
   have hpool := honest_input_pool_row S rho sch auth ha hem i reader input td hcoh hd hpost
   have hsub : Protocol.round_votes input.core a.erase ⊆ {a.confirmed} := by
     intro key hk
@@ -809,6 +808,57 @@ theorem honest_row_after_call (S : Setup V) (rho : NamedRun V)
       rw [ite_eq_right hguard]
       simp [Protocol.Store.sg_pool]
     exact hpost a (NamedAdmission.admitted_original_row S.hc input a hpre hnew)
+
+/-- **A delivered honest row is retained with its own payload** (
+generalised). Exposed for the delivery-to-pool wrapper in
+`NamedEmissionShape`: honesty plus the delivery window rule out every branch of
+the handler's guard,
+so no side condition reaches the caller. Statement unchanged. -/
+theorem honest_row_after_call (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    {i : Nat} {reader : V} {a : NamedAttestation V} {td : Time}
+    (ha : a.val_index ∈ rho.honest)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round))
+    (hcall : NamedRun.actualHandlesAt S rho i reader (.attest a) td)
+    (hlo : S.a a.round ≤ td) (hhi : td < S.a a.round + S.E.Δ) :
+    a ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows a.round := by
+  obtain ⟨input, hcoh, hd, hround, hpost⟩ := actual_call_input S rho sch hcall hlo hhi
+  exact honest_row_after_input S rho sch auth ha hem i reader input td hcoh hd hround hpost
+
+/-- An actual emission retains its own honest row after the attestation's
+preceding duties, at any allowed action time (PROTOCOL.md `sec:public-handlers`). -/
+theorem honest_row_after_emission (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    {i : Nat} {a : NamedAttestation V} (ha : a.val_index ∈ rho.honest)
+    (hi : rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)))
+    (hem : NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+      ((S.node a.val_index).act a.round)) :
+    a ∈ (NamedRun.stateBefore S rho (i + 1) a.val_index).st.sg_rows a.round := by
+  let n := NamedActionReads.windowActionReadFrom S a.val_index
+    (NamedRun.stateBefore S rho i a.val_index) a.round
+  obtain ⟨hawake, hrow⟩ := (Proofs.WindowAction.attestation_mem_at_action S a.val_index
+    (NamedRun.stateBefore S rho i a.val_index) a.round a).mp hem
+  change a = (Protocol.NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
+    S.E S.hc (S.node a.val_index) n.st n.record).2.2 at hrow
+  have hinv := Proofs.WindowAction.windowRead_invariant S a.val_index
+    (NamedRun.stateBefore S rho i a.val_index) ((S.node a.val_index).act a.round)
+    (Proofs.NamedRuntime.stateBefore_invariants S rho i a.val_index).1
+  have hd : Data ((S.node a.val_index).act a.round) n.st :=
+    window_read_data S a.val_index _ _ _ le_rfl
+      (Proofs.NamedRuntime.stateBefore_invariants S rho i a.val_index).1.1.1
+      (data_at_event S rho sch hi a.val_index).1
+  apply honest_row_after_input S rho sch auth ha ⟨i, hi, hem⟩ i a.val_index n.st
+    ((S.node a.val_index).act a.round) hinv.1.1 hd
+    (Proofs.WindowAction.actionRead_round S a.val_index _ a.round)
+  intro b hb
+  rw [Proofs.NamedRuntime.stateBefore_tick S rho hi,
+    action_tick_store S a.val_index _ a.round hawake]
+  change b ∈ (Protocol.NamedAdmission.admit_row S.hc n.st
+    (Protocol.NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
+      S.E S.hc (S.node a.val_index) n.st n.record).2.2).sg_rows b.round
+  rwa [← hrow]
+
+#print axioms honest_row_after_emission
 
 private theorem source_deadline_le_next_early (S : Setup V) (q : Round) (hR : 3 ≤ S.hc.R) :
     S.a q + S.E.Δ ≤ DecoupledConsensusModel.Protocol.early S.E S.hc (q + 1) .g2 := by

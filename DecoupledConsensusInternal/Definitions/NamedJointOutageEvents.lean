@@ -54,6 +54,17 @@ def CausalCarrierRowsBefore (S : Setup V) (rho : NamedRun V)
       NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
         ((S.node a.val_index).act a.round)
 
+/-- Ancestral rows held at the strict paper checkpoint retain their carrier
+guards. Honest emissions precede that checkpoint and may belong to its round
+(PROTOCOL.md `sec:healing-schedule`). -/
+def CheckpointCarrierRows (S : Setup V) (rho : NamedRun V)
+    (r : Round) (B : NamedBlock V) : Prop :=
+  CausalCarrierRowsBefore S rho (strictEventCut rho (S.a r)) B ∧
+  ∀ A, NamedBlock.Preceq A B →
+    carried_attestations_admissible S.hc A.erase = true ∧
+    ∀ a ∈ A.attestations, a.round ≤ S.hc.round_of A.slot ∧
+      (a.val_index ∈ rho.honest → a.round ≤ r)
+
 /-- Run-scoped conflicting carriers whose honest rows precede `n` stay
 within one height of the protected prefix. -/
 def IntrinsicConflictingCarrierBandIdx (S : Setup V) (rho : NamedRun V)

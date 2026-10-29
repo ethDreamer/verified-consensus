@@ -623,8 +623,35 @@ covering-arrival lemmas. Its local view inputs identify the new tokens'
 actual straggler emissions and resolved bodies; they do not assume head
 coverage. Given the existing view inclusions and non-equivocation condition,
 it preserves support and introduces no opposition at any permitted receipt
-time. The casewise round-invariant base/step and its current-round history
-consumers have not yet been wired to these producers.
+time. `WindowRoundBase.first_round_hpost` separates the impossible rounds
+through `r - 2` from the derived straggler floor. Its point check makes the
+straggler case, and hence both delivery arms, vacuous. The step's coverage
+split separates those stragglers from included-round emissions. An actual
+tick supplies an opening-horizon bound (`DomainIncluded`); it need not put
+the paper checkpoint inside the horizon.
+
+`WindowRoundHistory.round_event_history` extends the causal induction through
+included rounds using their opening SG certificates. The generic frame and
+entry lemmas transport either a pre-boundary certificate or an included-round
+certificate through the actual duty. The result extends to the next G0
+completion and restricts to the unchanged paper checkpoint, including any
+current-round emissions there. Its point-instance theorem recovers the
+original strict prior-round entry history and band. The opening certificates
+remain conclusions for the round induction to supply; this is not an added
+outage-regime premise or a completed round-invariant proof.
+
+`CheckpointCarrierRows` retains the ancestral carrier guards, bounds honest
+row rounds by `r` at `S.a r`, and records actual emission indices strictly
+before that time cut. The checkpoint producer and the strict-read FG
+noninterference consumer use this causal contract. A separate point theorem
+recovers the original `PriorCarrierRows` contract with strict round inequality.
+The retained/raw-row tracebacks and proposer-row uniqueness likewise use
+actual action times. P3 proves the full-delay gap to the consumers' existing
+public-grid cutoffs. An emitter's own retained row is proved from its actual
+admission input, without using a paper-time delivery window.
+
+The full `RoundInvariant` base/step, its coverage-arrival call sites, and the
+remaining histories still need to be connected to these checked producers.
 
 ## 12 Scope of this document
 

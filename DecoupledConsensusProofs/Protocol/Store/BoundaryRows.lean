@@ -212,7 +212,8 @@ theorem rawInputs_trace (S : Setup V) (rho : NamedRun V)
       (NamedRun.stateBeforeTime S rho cut reader).st.core.toHealing.gradeView eta r cutoff u) :
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = y.round ∧
       Protocol.sgVote a.erase = y ∧ y.round ∈ Protocol.latest_window eta r ∧
-      S.a a.round < cut ∧ NamedRun.emits S rho u (.attest a) (S.a a.round) := by
+      (S.node a.val_index).act a.round < cut ∧
+      NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨hpool, hfields⟩ := Finset.mem_filter.mp hy
   obtain ⟨k, hk, hyk⟩ := Finset.mem_biUnion.mp hpool
   obtain ⟨a, hround, hproj, hmem⟩ := pool_token_row S rho sch cut reader hyk

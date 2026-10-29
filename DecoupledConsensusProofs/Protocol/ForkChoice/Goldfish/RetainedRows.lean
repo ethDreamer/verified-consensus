@@ -69,7 +69,8 @@ theorem retained_trace (S : Setup V) (rho : NamedRun V)
     ∃ a : NamedAttestation V, a.val_index = u ∧ a.round = x.round ∧
       Protocol.sgVote a.erase = x ∧
       x.round ∈ Internal.OutageEntryRevision.retainedRounds S sr ∧
-      S.a a.round < cut ∧ NamedRun.emits S rho u (.attest a) (S.a a.round) := by
+      (S.node a.val_index).act a.round < cut ∧
+      NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨hpool, hfields⟩ := Finset.mem_filter.mp hx
   obtain ⟨k, hk, hxk⟩ := Finset.mem_biUnion.mp hpool
   obtain ⟨a, hround, hproj, hmem⟩ := pool_token_row S rho sch cut reader hxk
@@ -111,15 +112,16 @@ theorem retained_covers_at
     retained_trace S rho sch auth tau reader sr u hu hx
   obtain ⟨_, _, _, K, _, hkey⟩ := Proofs.NamedOutageInputs.emitted_attestation_head S rho hem
   have hsa : s ≤ a.round := by rw [haround]; exact hs
-  have hlt0 : S.a a.round < b0 := lt_of_lt_of_le hlt htau
-  have hdelta : S.a a.round + S.E.Δ ≤ tau :=
-    a_add_delta_le_of_lt_grid S tau hgrid a.round hlt
+  have hlt0 : (S.node a.val_index).act a.round < b0 := lt_of_lt_of_le hlt htau
+  have hdelta : (S.node a.val_index).act a.round + S.E.Δ ≤ tau :=
+    act_add_delta_le_of_lt_grid S tau hgrid a.val_index a.round hlt
   obtain ⟨H, hH, hroot, _, _⟩ :=
-    hhead a (S.a a.round) (hval ▸ hu) (hval ▸ hem) (hdelta.trans htau) hsa reader hreader tau
-      hdelta hFP K.root hkey
+    hhead a ((S.node a.val_index).act a.round) (hval ▸ hu) (hval ▸ hem) (hdelta.trans htau) hsa
+      reader hreader tau hdelta hFP K.root hkey
   have hHrun : NamedRun.blockInRun S rho H := held_blockInRun S rho sch reader hreader tau hH
   have hcover : Block.Preceq P H.erase :=
-    hconf a (S.a a.round) (hval ▸ hu) (hval ▸ hem) hlt0 hsa K.root hkey H hHrun hroot
+    hconf a ((S.node a.val_index).act a.round) (hval ▸ hu) (hval ▸ hem) hlt0 hsa
+      K.root hkey H hHrun hroot
   have hfind : Block.find? (NamedRun.stateBeforeTime S rho tau reader).st.core.T H.root =
       some H.erase := by
     simpa only [Proofs.NamedWire.erase_root] using
@@ -161,18 +163,19 @@ theorem retained_bodyReady
     (hhead : HonestHeadHeldAbove S rho b0 s P)
     (reader : V) (hreader : reader ∈ rho.honest) (u : V) (hu : u ∈ rho.honest)
     {a : NamedAttestation V} (hval : a.val_index = u) (hs : s ≤ a.round)
-    (hlt : S.a a.round + S.E.Δ ≤ b0) (hem : NamedRun.emits S rho u (.attest a) (S.a a.round))
-    (cut cutoff : Time) (hcut : S.a a.round + S.E.Δ ≤ cut)
+    (hlt : (S.node a.val_index).act a.round + S.E.Δ ≤ b0)
+    (hem : NamedRun.emits S rho u (.attest a) ((S.node a.val_index).act a.round))
+    (cut cutoff : Time) (hcut : (S.node a.val_index).act a.round + S.E.Δ ≤ cut)
     (hFP : Block.Preceq (NamedRun.stateBeforeTime S rho cut reader).st.core.F P)
-    (hcutoff : S.a a.round + S.E.Δ ≤ cutoff) :
+    (hcutoff : (S.node a.val_index).act a.round + S.E.Δ ≤ cutoff) :
     DecoupledConsensusModel.Protocol.bodyReady
         (NamedRun.stateBeforeTime S rho cut reader).st.core.toHealing.gradeView
         (NamedRun.stateBeforeTime S rho cut reader).st.core.F cutoff
         (Protocol.sgVote a.erase) = true := by
   obtain ⟨_, _, _, K, _, hkey⟩ := Proofs.NamedOutageInputs.emitted_attestation_head S rho hem
   obtain ⟨H, hH, hroot, hcompat, hstamp⟩ :=
-    hhead a (S.a a.round) (hval ▸ hu) (hval ▸ hem) hlt hs reader hreader cut hcut hFP
-      K.root hkey
+    hhead a ((S.node a.val_index).act a.round) (hval ▸ hu) (hval ▸ hem) hlt hs
+      reader hreader cut hcut hFP K.root hkey
   have hfind : Block.find? (NamedRun.stateBeforeTime S rho cut reader).st.core.T H.root =
       some H.erase := by
     simpa only [Proofs.NamedWire.erase_root] using

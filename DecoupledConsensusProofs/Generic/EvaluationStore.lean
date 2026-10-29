@@ -199,25 +199,12 @@ theorem attest_row_of_emission_exact
       rho.events[i]? = some (Event.tick v t) ∧
         a ∈ (rho.stateBefore S (i + 1) v).st.sg_rows a.round := by
   obtain ⟨haVal, ht⟩ := Proofs.Optimistic.emits_attest_shape S hemit
-  have haHon : a.val_index ∈ rho.honest := by
-    rw [haVal]
-    exact hv
-  have hem' :
-      NamedRun.emits S rho a.val_index (Object.attest a) (S.a a.round) := by
-    rw [haVal, ← ht]
-    exact hemit
+  subst v
+  subst t
   obtain ⟨i, hi, hmem⟩ := hemit
-  refine ⟨i, hi, ?_⟩
-  have hcall : NamedRun.actualHandlesAt S rho i v (Object.attest a) t :=
-    ⟨Or.inl (Or.inl ⟨t, hi, hmem⟩), ⟨Event.tick v t, hi, rfl, rfl⟩⟩
-  have hcall' :
-      NamedRun.actualHandlesAt S rho i v (Object.attest a) (S.a a.round) := by
-    rw [← ht]
-    exact hcall
-  exact Proofs.NamedSGArrival.honest_row_after_call S rho
+  exact ⟨i, hi, Proofs.NamedSGArrival.honest_row_after_emission S rho
     hadm.toNamedAdmissibleCore.toNamedScheduleWellFormed
-    hadm.toNamedAdmissibleCore.toNamedUnforgeable haHon hem' hcall'
-    (le_refl _) (lt_add_of_pos_right _ S.E.Δ_pos)
+    hadm.toNamedAdmissibleCore.toNamedUnforgeable hv hi hmem⟩
 
 
 /-- An exact attestation present immediately after an event before `t` remains

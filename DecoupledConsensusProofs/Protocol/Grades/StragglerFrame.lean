@@ -74,6 +74,35 @@ private theorem readAt_eq_succ (S : Setup V) (rho : NamedRun V) (t : Time) :
   unfold NamedRun.readAt NamedRun.stateBeforeTime
   rw [hpred]
 
+/-- A supplied opening certificate persists to the validator's actual action
+boundary, before clipping by any earlier duty in that tick
+(PROTOCOL.md `sec:grades`). -/
+theorem opening_frame_at_action (S : Setup V) (rho : NamedRun V)
+    (core : NamedAdmissibleCore S rho) (v : V) (q : Round) (P : NamedBlock V)
+    (hframe : let n := NamedRun.readAt S rho (domain S.E S.hc q .g1) v
+      Block.Preceq P.erase n.st.core.F ∨
+        ∃ raw : Block V, (readFrame n.cache n.st.core.toHealing q).g2 =
+          some (some raw) ∧ Block.Preceq P.erase raw) :
+    let n := NamedRun.stateBeforeTime S rho ((S.node v).act q) v
+    Block.Preceq P.erase n.st.core.F ∨
+      ∃ raw : Block V, Block.Preceq P.erase raw ∧
+        (readFrame n.cache n.st.core.toHealing q).g2 =
+          some (some (clipGrade raw n.st.core.F)) := by
+  have hlo : domain S.E S.hc q .g1 + 1 ≤ (S.node v).act q := by
+    have hpost := S.act_post_completion v q
+    have hd : (1 : Time) ≤ S.E.Δ := Int.add_one_le_iff.mpr S.E.Δ_pos
+    simp only [domain, Phase.domainOffset] at hpost ⊢
+    linarith
+  dsimp only at hframe ⊢
+  rw [readAt_eq_succ] at hframe
+  rcases hframe with hF | ⟨raw, hraw, hP⟩
+  · exact Or.inl (Block.preceq_trans hF
+      (stateBeforeTime_F_mono_of_le S rho core.sorted hlo))
+  · refine Or.inr ⟨raw, hP, ?_⟩
+    exact FrameForward.frame_phase_persists_in_round S rho core v q .g2
+      (domain S.E S.hc q .g1 + 1) ((S.node v).act q) hlo
+      (S.act_before_round_end v q).le (some raw) hraw
+
 /-- Finality and the raw G2 certificate carry to the actual action boundary.
 The certificate is clipped at the new finality; its active FG projection is
 not asserted here (PROTOCOL.md `sec:grades`). -/
@@ -91,25 +120,12 @@ theorem straggler_frame_at_action (S : Setup V) (rho : NamedRun V)
       ∃ raw : Block V, Block.Preceq P.erase raw ∧
         (readFrame n.cache n.st.core.toHealing a.round).g2 =
           some (some (clipGrade raw n.st.core.F)) := by
-  have hlo : domain S.E S.hc a.round .g1 + 1 ≤ (S.node v).act a.round := by
-    have hpost := S.act_post_completion v a.round
-    have hd : (1 : Time) ≤ S.E.Δ := Int.add_one_le_iff.mpr S.E.Δ_pos
-    simp only [domain, Phase.domainOffset] at hpost ⊢
-    linarith
-  have hframe := straggler_opening_frame S rho b0 s r P hmargin hmin hfirst
-    hframes hv hem hb har
-  dsimp only at hframe ⊢
-  rw [readAt_eq_succ] at hframe
-  rcases hframe with hF | ⟨raw, hraw, hP⟩
-  · exact Or.inl (Block.preceq_trans hF
-      (stateBeforeTime_F_mono_of_le S rho core.sorted hlo))
-  · refine Or.inr ⟨raw, hP, ?_⟩
-    exact FrameForward.frame_phase_persists_in_round S rho core v a.round .g2
-      (domain S.E S.hc a.round .g1 + 1) ((S.node v).act a.round) hlo
-      (S.act_before_round_end v a.round).le (some raw) hraw
+  exact opening_frame_at_action S rho core v a.round P
+    (straggler_opening_frame S rho b0 s r P hmargin hmin hfirst hframes hv hem hb har)
 
 #print axioms straggler_preBoundary_round
 #print axioms straggler_opening_frame
+#print axioms opening_frame_at_action
 #print axioms straggler_frame_at_action
 end DecoupledConsensusModel.Proofs.NamedOutageClosure
 end

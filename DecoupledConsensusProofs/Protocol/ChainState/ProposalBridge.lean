@@ -434,7 +434,7 @@ private theorem honest_selected_row_emission (S : Setup V) {rho : Run V}
     (ha : a ∈ Protocol.NamedProposalRows.select .poolAndCarried S.hc
       (proposerReadAt S rho s).st)
     (hhon : a.val_index ∈ rho.honest) :
-    rho.emits S a.val_index (.attest a) (S.a a.round) := by
+    rho.emits S a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
   let st := (proposerReadAt S rho s).st
   obtain ⟨n, hn, -⟩ := Proofs.Bridges.stateBeforeTime_eq_stateBefore S
     adm.toNamedAdmissibleCore.toNamedScheduleWellFormed
@@ -494,7 +494,7 @@ theorem honest_selected_row_unique (S : Setup V) {rho : Run V}
   have hbHon : b.val_index ∈ rho.honest := by simpa only [hval] using hhon
   have hbe := honest_selected_row_emission S adm s hb hbHon
   have hae := honest_selected_row_emission S adm s ha hhon
-  have hbe' : rho.emits S a.val_index (.attest b) (S.a b.round) := by
+  have hbe' : rho.emits S a.val_index (.attest b) ((S.node a.val_index).act b.round) := by
     simpa only [hval] using hbe
   exact Proofs.NamedOutageProvenance.emitted_same_round_unique S rho
     adm.toNamedAdmissibleCore.toNamedScheduleWellFormed hbe' hae hround

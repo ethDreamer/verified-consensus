@@ -121,21 +121,23 @@ theorem source_above_of_frame (S : Setup V) (n : NamedNodeState V) (r : Round)
       have hqB : Block.Preceq q B := (Finset.mem_filter.mp (Engine.deepest?_mem hd)).2.1
       exact Option.some.inj hs ▸ Block.preceq_trans hPq hqB
 
-/-- The post-boundary straggler entry is compatible using only entries
-strictly before its own emission event. -/
-theorem straggler_action_frame
-    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (P : NamedBlock V)
+/-- An opening certificate and strictly earlier entry history preserve the
+FG projection at the actual action input (PROTOCOL.md `sec:grades`). -/
+theorem action_frame_of_opening
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s : Round) (P : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hmin : ∀ q : Round, 0 < q → b0 ≤ S.a q → r ≤ q)
-    (hfirst : S.a (r - 1) < b0) (hframes : PreBoundaryFrames S rho b0 s P.erase)
     (hheld0 : ∀ v ∈ rho.honest, P ∈ (NamedRun.stateBeforeTime S rho b0 v).st.bodies)
     {i : Nat} {a : NamedAttestation V}
     (hhistory : IntrinsicHighEntryHistoryIdx S rho P i) (ha : a.val_index ∈ rho.honest)
     (hi : rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)))
     (hem : NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
       ((S.node a.val_index).act a.round))
-    (hb : b0 ≤ (S.node a.val_index).act a.round) (har : a.round < r) :
+    (hb : b0 ≤ (S.node a.val_index).act a.round)
+    (hopening : let n := NamedRun.readAt S rho (domain S.E S.hc a.round .g1) a.val_index
+      Block.Preceq P.erase n.st.core.F ∨
+        ∃ raw, (readFrame n.cache n.st.core.toHealing a.round).g2 = some (some raw) ∧
+          Block.Preceq P.erase raw) :
     let n := NamedActionReads.windowActionReadFrom S a.val_index
       (NamedRun.stateBefore S rho i a.val_index) a.round
     (Block.Preceq P.erase (get_fg_root n.st.core.toHealing.toFG) ∨
@@ -166,9 +168,7 @@ theorem straggler_action_frame
     rw [← hproj.2.1]
     exact Protocol.stateBefore_F_mono S rho a.val_index (Nat.le_succ i)
   have hbeforeCompat := compatible_ancestor_right hcompat hmono
-  have hframe := straggler_frame_at_action S rho hexec.core b0 s r P hmargin hmin hfirst
-    hframes ha (show NamedRun.emits S rho a.val_index (.attest a) _ from ⟨i, hi, hem⟩)
-    hb har
+  have hframe := opening_frame_at_action S rho hexec.core a.val_index a.round P hopening
   dsimp only at hframe
   rw [← hprefix] at hframe
   have hframeN : Block.Preceq P.erase n.st.core.F ∨
@@ -182,7 +182,65 @@ theorem straggler_action_frame
         ((q10_retained_prefix _ _ _ hbeforeCompat).2 hPraw)
   exact ⟨hfg, hcompat, hframeN⟩
 
-/-- The selected straggler height entry is compatible with the prefix. -/
+/-- The pre-boundary frame supplies the opening certificate for a straggler
+(PROTOCOL.md `sec:grades`). -/
+theorem straggler_action_frame
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (P : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
+    (hsleep : OutageSleepyThroughout S rho)
+    (hmin : ∀ q : Round, 0 < q → b0 ≤ S.a q → r ≤ q)
+    (hfirst : S.a (r - 1) < b0) (hframes : PreBoundaryFrames S rho b0 s P.erase)
+    (hheld0 : ∀ v ∈ rho.honest, P ∈ (NamedRun.stateBeforeTime S rho b0 v).st.bodies)
+    {i : Nat} {a : NamedAttestation V}
+    (hhistory : IntrinsicHighEntryHistoryIdx S rho P i) (ha : a.val_index ∈ rho.honest)
+    (hi : rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)))
+    (hem : NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+      ((S.node a.val_index).act a.round))
+    (hb : b0 ≤ (S.node a.val_index).act a.round) (har : a.round < r) :
+    let n := NamedActionReads.windowActionReadFrom S a.val_index
+      (NamedRun.stateBefore S rho i a.val_index) a.round
+    (Block.Preceq P.erase (get_fg_root n.st.core.toHealing.toFG) ∨
+      P.erase ∈ get_filtered_block_tree n.st.core.toHealing.toFG) ∧
+    Block.compatible P.erase n.st.core.F = true ∧
+    (Block.Preceq P.erase n.st.core.F ∨
+      ∃ raw, (readFrame n.cache n.st.core.toHealing a.round).g2 = some (some raw) ∧
+        Block.Preceq P.erase raw) := by
+  exact action_frame_of_opening S rho b0 b1 s P hexec hmargin hsleep hheld0
+    hhistory ha hi hem hb (straggler_opening_frame S rho b0 s r P hmargin hmin hfirst
+      hframes ha (show NamedRun.emits S rho a.val_index (.attest a) _ from ⟨i, hi, hem⟩) hb har)
+
+/-- The selected height entry is compatible with the prefix when its opening
+certificate covers that prefix (PROTOCOL.md `sec:grades`). -/
+theorem entry_compatible_of_opening
+    (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s : Round) (P : NamedBlock V)
+    (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
+    (hsleep : OutageSleepyThroughout S rho) (hP : NamedRun.blockInRun S rho P)
+    (hheld0 : ∀ v ∈ rho.honest, P ∈ (NamedRun.stateBeforeTime S rho b0 v).st.bodies)
+    {i : Nat} {a : NamedAttestation V} {source entry : NamedBlock V}
+    (hhistory : IntrinsicHighEntryHistoryIdx S rho P i) (ha : a.val_index ∈ rho.honest)
+    (hs : WindowSignedSourceAt S rho i a source entry)
+    (hb : b0 ≤ (S.node a.val_index).act a.round)
+    (hopening : let n := NamedRun.readAt S rho (domain S.E S.hc a.round .g1) a.val_index
+      Block.Preceq P.erase n.st.core.F ∨
+        ∃ raw, (readFrame n.cache n.st.core.toHealing a.round).g2 = some (some raw) ∧
+          Block.Preceq P.erase raw) :
+    NamedBlock.compatible P entry = true := by
+  let n := NamedActionReads.windowActionReadFrom S a.val_index
+    (NamedRun.stateBefore S rho i a.val_index) a.round
+  obtain ⟨hfg, _, hframeN⟩ := action_frame_of_opening S rho b0 b1 s P
+    hexec hmargin hsleep hheld0 hhistory ha hs.1 hs.2.1 hb hopening
+  have hPsource := source_above_of_frame S n a.round P.erase source.erase hfg hframeN hs.2.2.2.2.1
+  obtain ⟨A, hAsource, hAP⟩ := NamedAncestry.erased_ancestor_lift source hPsource
+  have hsourceScope := (NamedWindowIntrinsicEntry.signed_source_entry_scope S rho ha hs).1
+  have hroot : A.root = P.root := by
+    rw [← NamedWire.erase_root A, ← NamedWire.erase_root P, hAP]
+  have heq : A = P := hexec.core.root_injective source P hsourceScope hP A P
+    (Or.inl hAsource) (Or.inr (NamedAncestry.named_self P)) hroot
+  subst A
+  exact named_common source P entry hAsource hs.2.2.2.2.2.1
+
+/-- The straggler's signed entry uses its own pre-boundary opening frame
+(PROTOCOL.md `sec:grades`). -/
 theorem straggler_entry_compatible
     (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (s r : Round) (P : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
@@ -195,21 +253,14 @@ theorem straggler_entry_compatible
     (hs : WindowSignedSourceAt S rho i a source entry)
     (hb : b0 ≤ (S.node a.val_index).act a.round) (har : a.round < r) :
     NamedBlock.compatible P entry = true := by
-  let n := NamedActionReads.windowActionReadFrom S a.val_index
-    (NamedRun.stateBefore S rho i a.val_index) a.round
-  obtain ⟨hfg, _, hframeN⟩ := straggler_action_frame S rho b0 b1 s r P
-    hexec hmargin hsleep hmin hfirst hframes hheld0 hhistory ha hs.1 hs.2.1 hb har
-  have hPsource := source_above_of_frame S n a.round P.erase source.erase hfg hframeN hs.2.2.2.2.1
-  obtain ⟨A, hAsource, hAP⟩ := NamedAncestry.erased_ancestor_lift source hPsource
-  have hsourceScope := (NamedWindowIntrinsicEntry.signed_source_entry_scope S rho ha hs).1
-  have hroot : A.root = P.root := by
-    rw [← NamedWire.erase_root A, ← NamedWire.erase_root P, hAP]
-  have heq : A = P := hexec.core.root_injective source P hsourceScope hP A P
-    (Or.inl hAsource) (Or.inr (NamedAncestry.named_self P)) hroot
-  subst A
-  exact named_common source P entry hAsource hs.2.2.2.2.2.1
+  exact entry_compatible_of_opening S rho b0 b1 s P hexec hmargin hsleep hP hheld0
+    hhistory ha hs hb (straggler_opening_frame S rho b0 s r P hmargin hmin hfirst
+      hframes ha (show NamedRun.emits S rho a.val_index (.attest a) _ from
+        ⟨i, hs.1, hs.2.1⟩) hb har)
 
 #print axioms source_above_of_frame
+#print axioms action_frame_of_opening
+#print axioms entry_compatible_of_opening
 #print axioms straggler_action_frame
 #print axioms straggler_entry_compatible
 

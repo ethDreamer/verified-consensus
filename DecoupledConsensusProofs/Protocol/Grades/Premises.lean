@@ -79,6 +79,16 @@ theorem a_add_delta_le_of_lt_grid (S : Setup V) (t : Time) (hgrid : OnDeltaGrid 
   rw [hk, hm] at h ⊢
   exact grid_gap S.E.Δ m k S.E.Δ_pos h
 
+/-- P3 gives the same full-delay gap for a validator's actual action.
+The cutoff remains the consumer's original public-grid read. -/
+theorem act_add_delta_le_of_lt_grid (S : Setup V) (t : Time) (hgrid : OnDeltaGrid S t)
+    (v : V) (q : Round) (h : (S.node v).act q < t) :
+    (S.node v).act q + S.E.Δ ≤ t := by
+  obtain ⟨k, hk⟩ := hgrid
+  obtain ⟨m, hm⟩ := onDeltaGrid_of_public S _ (S.act_public v q)
+  rw [hk, hm] at h ⊢
+  exact grid_gap S.E.Δ m k S.E.Δ_pos h
+
 /-- The form the boundary uses, from `OutageExecution.boundaryPublic`. -/
 theorem a_add_delta_le_of_lt_public (S : Setup V) (b0 : Time)
     (hpub : Execution.PublicTime S b0) (q : Round) (h : S.a q < b0) :

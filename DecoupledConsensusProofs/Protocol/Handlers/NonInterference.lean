@@ -346,20 +346,15 @@ private theorem scope_of_held_strict (S : Setup V) (rho : NamedRun V)
   exact Proofs.NamedRuntime.blockInRun_of_direct S rho
     (Proofs.NamedRuntime.directBlock_of_prefix S rho hreader i hD)
 
-/-! ## The post-boundary replacement for `NoHonestConflictAbove`.
+/-! ## Causal entry history at the unchanged paper checkpoint.
 
-Pre-`b0` the guard is temporal: every honest row carried by a held body was
-emitted strictly before `b0`, so the first clause of `NoHonestConflictAbove`
-applies. On `[b0, S.a r]` the same rows are bounded by ROUND instead of by
-time: `honest_held_ancestor_row_before_action` puts every honest row of a
-body held at the round-`r` checkpoint at a round strictly below `r`, and
-`IntrinsicHighEntryHistory` is exactly the compatibility statement for the
-entries such rows sign. Root injectivity identifies the entry the signing
-node actually derived with the certificate's named target. -/
+Rows may belong to the checkpoint's own round. Their actual emission indices
+precede the strict paper-time cut, which bounds the compatibility history.
+-/
 private theorem held_row_target_compatible (S : Setup V) (rho : NamedRun V)
     (b0 b1 : Time) (r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
     (reader : V) (t : Time) (ht : t ≤ S.a r)
     {D carrier X : NamedBlock V}
     (hD : D ∈ (NamedRun.stateBeforeTime S rho t reader).st.bodies)
@@ -372,20 +367,16 @@ private theorem held_row_target_compatible (S : Setup V) (rho : NamedRun V)
     NamedBlock.compatible Pn X = true := by
   have hDr : D ∈ (NamedRun.stateBeforeTime S rho (S.a r) reader).st.bodies :=
     bodies_time_mono S rho hexec.core.sorted reader ht hD
-  obtain ⟨har, hem⟩ :=
-    NamedOutageProvenance.honest_held_ancestor_row_before_action S rho
-      hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable
-      reader r hDr hcarrier hrow ha
-  obtain ⟨i, source, entry, hSigned, hSourceHeight, hEntryRoot⟩ :=
-    Proofs.NamedIntrinsicEntry.emitted_height_signed_source S rho hem hp
-  have hEntryBefore : HonestEntryBefore S rho r h entry :=
-    ⟨i, a, source, ha, har, hSigned, hSourceHeight⟩
-  have hcompat : NamedBlock.compatible Pn entry = true := hentry h entry hEntryBefore
-  rcases hSigned with ⟨_, _, _, hSourceHeld, _, hEntrySource, _, _, _⟩
-  have hPre : source ∈ (NamedRun.stateBefore S rho i a.val_index).st.bodies := hSourceHeld
-  have hSourceScope : NamedRun.blockInRun S rho source :=
-    Proofs.NamedRuntime.blockInRun_of_direct S rho
-      (Proofs.NamedRuntime.directBlock_of_prefix S rho ha i hPre)
+  have hrows := (NamedCheckpointRows.prior_carrier_rows_at_checkpoint S rho
+    hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable reader r hDr).1
+  obtain ⟨i, hin, hi, hem⟩ := hrows carrier hcarrier a hrow ha
+  obtain ⟨source, entry, hSigned, _hSourceHeight, hEntryRoot⟩ :=
+    Proofs.NamedWindowIntrinsicEntry.emitted_height_signed_source_at S rho
+      hexec.core.nodup hi hem hp
+  have hcompat : NamedBlock.compatible Pn entry = true :=
+    hentry i hin a source entry ha hSigned
+  have hSourceScope := (NamedWindowIntrinsicEntry.signed_source_entry_scope S rho ha hSigned).1
+  have hEntrySource := hSigned.2.2.2.2.2.1
   have hRootEq : entry.root = X.root := hEntryRoot.trans hXroot.symm
   have hEntryEq : entry = X :=
     hexec.core.toNamedRootCollisionFree.root_injective source X hSourceScope hXscope
@@ -398,7 +389,7 @@ private theorem justified_compatible_after_boundary (S : Setup V) (rho : NamedRu
     (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
     (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r) :
     Block.compatible Pn.erase
       (NamedRun.stateBeforeTime S rho t reader).st.core.J = true := by
@@ -431,7 +422,7 @@ theorem finalized_compatible_after_boundary (S : Setup V) (rho : NamedRun V)
     (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
     (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r) :
     Block.compatible Pn.erase
       (NamedRun.stateBeforeTime S rho t reader).st.core.F = true := by
@@ -451,7 +442,7 @@ private theorem fg_root_compatible_after_boundary (S : Setup V) (rho : NamedRun 
     (b0 b1 : Time) (s r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1) (hmargin : FormationMargin S s b0)
     (hsleep : OutageSleepyThroughout S rho)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
     (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r) :
     Block.compatible Pn.erase
       (Protocol.get_fg_root
@@ -468,16 +459,15 @@ private theorem fg_root_compatible_after_boundary (S : Setup V) (rho : NamedRun 
 private theorem held_band_after_boundary (S : Setup V) (rho : NamedRun V)
     (b0 b1 : Time) (r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1)
-    (hband : IntrinsicConflictingCarrierBand S rho Pn r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
     (reader : V) (hreader : reader ∈ rho.honest) (t : Time) (ht : t ≤ S.a r)
     {D : NamedBlock V} (hD : D ∈ (NamedRun.stateBeforeTime S rho t reader).st.bodies)
     (hConflict : NamedBlock.compatible Pn D = false) :
     (derive_named S.E S.cfg D).h ≤ (derive_named S.E S.cfg Pn).h + 1 := by
   have hDr : D ∈ (NamedRun.stateBeforeTime S rho (S.a r) reader).st.bodies :=
     bodies_time_mono S rho hexec.core.sorted reader ht hD
-  have hprior : PriorCarrierRows S rho r D :=
-    NamedCheckpointRows.prior_carrier_rows_at_checkpoint S rho
-      hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable reader r hDr
+  have hprior := (NamedCheckpointRows.prior_carrier_rows_at_checkpoint S rho
+    hexec.core.toNamedScheduleWellFormed hexec.core.toNamedUnforgeable reader r hDr).1
   have hDscope := scope_of_held_strict S rho hexec.core.sorted reader hreader t hD
   exact hband D hDscope hprior hConflict
 
@@ -503,7 +493,7 @@ VIABLE ancestor of the round's frozen G2 root, and it carries `Pn` only when
 theorem viable_after_boundary
     (S : Setup V) (rho : NamedRun V) (b0 b1 : Time) (r : Round) (Pn : NamedBlock V)
     (hexec : OutageExecution S rho b0 b1)
-    (hband : IntrinsicConflictingCarrierBand S rho Pn r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
     (w : V) (hw : w ∈ rho.honest) (t : Time) (ht : t ≤ S.a r)
     (hheld : Pn ∈ (NamedRun.stateBeforeTime S rho t w).st.bodies)
     (hFP : Block.Preceq (NamedRun.stateBeforeTime S rho t w).st.core.F Pn.erase) :
@@ -565,8 +555,8 @@ theorem fg_noninterference_after_boundary
     (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
     (_hPn : NamedRun.blockInRun S rho Pn)
     (_hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hband : IntrinsicConflictingCarrierBand S rho Pn r)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
     (hheld0 : ∀ u ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 u).st.bodies)
     (w : V) (hw : w ∈ rho.honest) (t : Time) (hb0 : b0 ≤ t) (ht : t ≤ S.a r) :
     Pn ∈ (NamedRun.stateBeforeTime S rho t w).st.bodies ∧
@@ -619,8 +609,8 @@ theorem fg_noninterference_after_boundary_readAt
     (hmargin : FormationMargin S s b0) (hsleep : OutageSleepyThroughout S rho)
     (hPn : NamedRun.blockInRun S rho Pn)
     (hno : NoHonestConflictAbove S rho b0 Pn.erase)
-    (hband : IntrinsicConflictingCarrierBand S rho Pn r)
-    (hentry : IntrinsicHighEntryHistory S rho Pn r)
+    (hband : IntrinsicConflictingCarrierBandIdx S rho Pn (strictEventCut rho (S.a r)))
+    (hentry : IntrinsicHighEntryHistoryIdx S rho Pn (strictEventCut rho (S.a r)))
     (hheld0 : ∀ u ∈ rho.honest, Pn ∈ (NamedRun.stateBeforeTime S rho b0 u).st.bodies)
     (w : V) (hw : w ∈ rho.honest) (t : Time) (hb0 : b0 ≤ t) (ht : t < S.a r) :
     Pn ∈ (NamedRun.readAt S rho t w).st.bodies ∧
