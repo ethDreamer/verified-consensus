@@ -580,6 +580,38 @@ instantiate an outage execution. It shows why record retention and the G0
 veto alone cannot supply the missing FG-preservation step; it is not a
 counterexample to the full straggler floor or the protected outage theorem.
 
+The causal FG argument uses strict event prefixes. `WindowSignedSourceAt`
+records the actual attestation input, including any proposal, vote, or
+confirmation duty earlier in the same tick. Its source can therefore be a
+body inserted in that tick; run scope is recovered from the post-tick store,
+not assumed from the pre-tick store. At `act = S.a`, this contract is proved
+equivalent to the original signed-source contract.
+
+An accepted carrier's ancestral honest rows were emitted strictly before
+its acceptance event. This includes self-proposals: their selected rows
+come from the prior pool or prior bodies, and strong induction follows
+those earlier acceptances. A height-crossing quorum contains an honest
+signer under the existing sleepy-weight bound. The corresponding actual
+signed entry and root injectivity then bound a conflicting carrier by
+`h(P) + 1`. This establishes the receipt arm without an additional quorum
+or delivery premise. The same strict history gives FG noninterference in
+the post-event view, including the proposal stage before an attestation.
+
+`StragglerEntryHistory.first_round_event_history` closes the two arms for
+event prefixes before the first included round's G0 completion. An earlier
+honest entry is compatible by the induction hypothesis. The carrier band
+and justification certificates therefore preserve the emitter's FG choice;
+its pre-boundary G2 frame survives preparation of the actual action input,
+with finality clipping. A nonempty selected height source lies above `P`,
+so the entry it signs is compatible with `P`. Pre-`b0` emissions use the
+initial history. P1 excludes current-round emissions from this base domain;
+the domain contains every prior-round straggler. This does not replace the
+paper checkpoint or claim compatibility of current-round entries there.
+The original point history and one-shot band producers are explicitly
+recovered from the event contracts. The SG emitted-head floor and the
+round-invariant consumers still require integration; signed-entry
+compatibility alone is not an emitted-head coverage claim.
+
 ## 12 Scope of this document
 
 This document covers the current model. It records no history of a choice, and

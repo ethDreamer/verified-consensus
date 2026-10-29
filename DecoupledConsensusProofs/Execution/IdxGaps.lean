@@ -12,18 +12,12 @@ public import DecoupledConsensusProofs.Execution.ReceiptCallsBase
 @[expose] public section
 
 /-!
-# Closed gap (index-bounded refactor)
+# Strict emission order for self-proposed carriers
 
-This file proves `emission_index_le_self_proposed_carrier` by index bounds.
-
-`emission_index_le_self_proposed_carrier` is closed here by strong induction
-on the self-proposal tick index, routing through the F2 row source
-(`Protocol.NamedProposalRows.select.poolAndCarried`): a carried row is either
-a direct pool row (`NamedOutageProvenance.honest_held_row_emission`) or a row
-carried by an already-held body (`honest_held_ancestor_row_emission`). Either
-way the resulting acceptance event is a delivery (closed directly by the
-index bridge lemmas) or a further self-tick at a strictly smaller index
-(closed by the induction hypothesis).
+A self-proposal selects carried rows from its prior pool or retained bodies.
+Their acceptance events strictly precede the proposal. Deliveries supply a
+strict emission bound directly; earlier self-proposals use strong induction.
+The non-strict corollary retains the existing consumer interface.
 -/
 
 
@@ -52,7 +46,7 @@ omit [Fintype V] in
 private theorem preceq_refl (B : NamedBlock V) : NamedBlock.Preceq B B := by
   cases B <;> simp [NamedBlock.Preceq, NamedBlock.preceq]
 
-private theorem emission_index_le_self_proposed_carrier_aux
+private theorem emission_index_lt_self_proposed_carrier_aux
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho) :
     ∀ (j : Nat) (v : V) (t : Time) (B : NamedBlock V),
     rho.events[j]? = some (.tick v t) →
@@ -60,7 +54,7 @@ private theorem emission_index_le_self_proposed_carrier_aux
     ∀ (a : NamedAttestation V), a ∈ B.attestations → a.val_index ∈ rho.honest →
     ∀ (k : Nat) (t' : Time), rho.events[k]? = some (.tick a.val_index t') →
     NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index t' →
-    t' ≤ t → k ≤ j := by
+    t' ≤ t → k < j := by
   intro j
   induction j using Nat.strong_induction_on with
   | h j IH =>
@@ -116,14 +110,14 @@ private theorem emission_index_le_self_proposed_carrier_aux
           have hjtick' : rho.events[j']? = some (.tick a.val_index t') := by
             rw [← hveq, ← httV]; exact hjtick
           have hkj' : k = j' := tick_index_unique rho core.nodup hk hjtick'
-          exact hkj' ▸ hj'lt.le
+          exact hkj' ▸ hj'lt
         · obtain ⟨e, heE, -, hteqE⟩ := hacc.1.2
           have heEq : e = NamedEvent.deliver v (NamedObject.attest a) tt :=
             Option.some.inj (heE.symm.trans hjdeliv)
           have httEq : tt = t'' := by rw [heEq] at hteqE; exact hteqE
           have htle : t' ≤ tt := by rw [ht'eq, httEq]; exact hsend
           have hklt : k < j' := tick_lt_of_deliver_index rho core.sorted hjdeliv hk htle
-          exact le_trans hklt.le hj'lt.le
+          exact lt_trans hklt hj'lt
       · obtain ⟨hblockcall, -, -, hpos⟩ := hcarr
         have haBc : a ∈ Bc.attestations := List.mem_iff_getElem?.mpr ⟨pos, hpos⟩
         rcases hblockcall with ⟨tt, hjdeliv2, -⟩ | ⟨tt, hjtick2, hemBc2, -⟩
@@ -135,13 +129,13 @@ private theorem emission_index_le_self_proposed_carrier_aux
           have hk''tick' : rho.events[k'']? = some (.tick a.val_index t') := by
             rw [← ht'eq] at ht'''eq; rw [ht'''eq] at hk''tick; exact hk''tick
           have hkk'' : k = k'' := tick_index_unique rho core.nodup hk hk''tick'
-          exact hkk'' ▸ le_trans hk''lt.le hj'lt.le
+          exact hkk'' ▸ lt_trans hk''lt hj'lt
         · obtain ⟨e, heE, -, hteqE⟩ := hacc.1.2
           have heEq : e = NamedEvent.tick v tt := Option.some.inj (heE.symm.trans hjtick2)
           have httEq : tt = t'' := by rw [heEq] at hteqE; exact hteqE
           have htle : t' ≤ tt := by rw [ht'eq, httEq]; exact hsend
-          have hkj' : k ≤ j' := IH j' hj'lt v tt Bc hjtick2 hemBc2 a haBc hu k t' hk hemit htle
-          exact le_trans hkj' hj'lt.le
+          have hkj' : k < j' := IH j' hj'lt v tt Bc hjtick2 hemBc2 a haBc hu k t' hk hemit htle
+          exact lt_trans hkj' hj'lt
     · -- Carried branch: `a` sits in an already-held body's attestations.
       obtain ⟨Bc, hBcOrdered, -, haBc, -⟩ :=
         (Proofs.NamedProposalRows.mem_carried_rows S.hc before a).mp hcarried
@@ -156,8 +150,8 @@ private theorem emission_index_le_self_proposed_carrier_aux
         have heEq : e = NamedEvent.tick v tt := Option.some.inj (heE.symm.trans hjtick2)
         have httEq : tt = t'' := by rw [heEq] at hteqE; exact hteqE
         have htle : t' ≤ tt := by rw [ht'eq, httEq]; exact hsend
-        have hkj' : k ≤ j' := IH j' hj'lt v tt Bc hjtick2 hemBc2 a haBc hu k t' hk hemit htle
-        exact le_trans hkj' hj'lt.le
+        have hkj' : k < j' := IH j' hj'lt v tt Bc hjtick2 hemBc2 a haBc hu k t' hk hemit htle
+        exact lt_trans hkj' hj'lt
       · obtain ⟨k'', t''', hk''lt, hk''tick, hk''emit⟩ :=
           emission_index_lt_acceptance_carried_attest S rho core j' v Bc tt hjdeliv2 a haBc hu
         have hemK'' : NamedRun.emits S rho a.val_index (.attest a) t''' :=
@@ -166,7 +160,21 @@ private theorem emission_index_le_self_proposed_carrier_aux
         have hk''tick' : rho.events[k'']? = some (.tick a.val_index t') := by
           rw [← ht'eq] at ht'''eq; rw [ht'''eq] at hk''tick; exact hk''tick
         have hkk'' : k = k'' := tick_index_unique rho core.nodup hk hk''tick'
-        exact hkk'' ▸ le_trans hk''lt.le hj'lt.le
+        exact hkk'' ▸ lt_trans hk''lt hj'lt
+
+/-- A self-proposed carrier selects its honest rows from the strict prior state.
+Even at a shared tick time, its rows were emitted at strictly earlier events. -/
+theorem emission_index_lt_self_proposed_carrier
+    (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
+    (j : Nat) (v : V) (t : Time) (B : NamedBlock V)
+    (hj : rho.events[j]? = some (.tick v t))
+    (hemB : NamedObject.block B ∈ NamedRun.emittedAt S rho j v t)
+    (a : NamedAttestation V) (ha : a ∈ B.attestations) (hu : a.val_index ∈ rho.honest)
+    (k : Nat) (t' : Time) (hk : rho.events[k]? = some (.tick a.val_index t'))
+    (hemit : NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index t')
+    (ht' : t' ≤ t) : k < j :=
+  emission_index_lt_self_proposed_carrier_aux S rho core j v t B hj hemB a ha hu k t' hk hemit ht'
+
 
 theorem emission_index_le_self_proposed_carrier
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
@@ -177,8 +185,9 @@ theorem emission_index_le_self_proposed_carrier
     (k : Nat) (t' : Time) (hk : rho.events[k]? = some (.tick a.val_index t'))
     (hemit : NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index t')
     (ht' : t' ≤ t) : k ≤ j :=
-  emission_index_le_self_proposed_carrier_aux S rho core j v t B hj hemB a ha hu k t' hk hemit ht'
+  (emission_index_lt_self_proposed_carrier S rho core j v t B hj hemB a ha hu k t' hk hemit ht').le
 
+#print axioms emission_index_lt_self_proposed_carrier
 #print axioms emission_index_le_self_proposed_carrier
 
 end DecoupledConsensusModel.Internal.NamedOutageEntry.History

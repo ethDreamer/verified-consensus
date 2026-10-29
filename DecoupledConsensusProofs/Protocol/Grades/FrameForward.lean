@@ -1,5 +1,6 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowAction
 public import DecoupledConsensusProofs.Protocol.Grades.CacheProvenance
 public import DecoupledConsensusProofs.Execution.HealthyLocalFacts
 public import DecoupledConsensusInternal.Definitions.NamedJointOutage
@@ -659,6 +660,49 @@ theorem frame_phase_checkpoint_eq (S : Setup V) (rho : NamedRun V)
     (cacheAtRound (preparedCache S before (S.a r)) r)) p = some root
   rw [phase_clip_frame, hprep, hraw, clip_result_advance _ _ (Block.preceq_self _)]
   exact key.symm
+
+/-- Preparing the actual action preserves every completed phase, with only
+clipping against the action input's finality after the earlier duties. -/
+theorem frame_phase_window_eq (S : Setup V) (rho : NamedRun V)
+    (i : Nat) (v : V) (r : Round) (p : Phase) (root : Option (Block V))
+    (hbase : phaseResult (DecoupledConsensusModel.Protocol.readFrame
+        (NamedRun.stateBefore S rho i v).cache
+        (NamedRun.stateBefore S rho i v).st.core.toHealing r) p = some root) :
+    phaseResult (DecoupledConsensusModel.Protocol.readFrame (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).cache
+      (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.toHealing r) p =
+      clipResult (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.F
+        (some root) := by
+  set before := NamedRun.stateBefore S rho i v with hbefore
+  have hclipped := (Proofs.NamedRuntime.stateBefore_invariants S rho i v).2.2
+  have hraw : phaseResult (cacheAtRound before.cache r) p = some root := by
+    rw [← hbase]
+    change _ = phaseResult (clipFrame before.st.core.F (cacheAtRound before.cache r)) p
+    rw [← cacheAtRound_clip, hclipped]
+  have hsome : phaseResult (cacheAtRound before.cache r) p ≠ none := by
+    rw [hraw]; exact Option.some_ne_none _
+  have hprep : phaseResult (cacheAtRound (preparedCache S before ((S.node v).act r)) r) p =
+      clipResult before.st.core.F (phaseResult (cacheAtRound before.cache r) p) := by
+    unfold preparedCache NamedActionReads.preparedCache onPhaseTick
+    rw [S.act_round v r]
+    set al := alignRound before.cache r with hal
+    have halign : cacheAtRound al r = cacheAtRound before.cache r :=
+      cacheAtRound_align_self before.cache r
+    have hsome' : phaseResult (cacheAtRound al r) p ≠ none := by
+      rw [halign]; exact hsome
+    change phaseResult (cacheAtRound (clipCache before.st.core.F
+      ⟨al.round, completeFrame S.E S.hc before.st.core.toHealing al.round ((S.node v).act r) al.current,
+        completeFrame S.E S.hc before.st.core.toHealing (al.round + 1) ((S.node v).act r) al.next⟩) r) p = _
+    rw [phase_clip,
+      phase_completed_cache S.E S.hc before.st.core.toHealing al ((S.node v).act r) r p hsome', halign]
+  have key : phaseResult (cacheAtRound before.cache r) p =
+      clipResult before.st.core.F (phaseResult (cacheAtRound before.cache r) p) := by
+    conv_lhs => rw [← hclipped]
+    exact phase_clip _ _ _ _
+  rw [hraw] at key
+  change phaseResult (clipFrame
+    (NamedActionReads.windowActionReadFrom S v before r).st.core.F
+    (cacheAtRound (preparedCache S before ((S.node v).act r)) r)) p = _
+  rw [phase_clip_frame, hprep, hraw, ← key]
 
 /-- **Checkpoint corollary.** A G2 result of round `r` completed at any strict
 read between its domain tick and the action time is the one the round-`r`
