@@ -208,6 +208,34 @@ the invariant — stop and report it as a finding, since that would be a
 substantive discovery about healing under the window, not plumbing. Record
 the classification and the example in `docs/MODELING_CHOICES.md` as before.
 
+*Resolution of the straggler delivery question (2026-10-29)*: your checked
+gap is accepted, and it corrects the previous paragraph: its claim that
+part (ii) stragglers are "delivered before round `r`'s early G2 cutoff" is
+a synchrony statement and does NOT hold during the outage window — P2
+bounds the send, and only the delivery assumptions turn a send bound into
+a receipt bound. That clause is superseded as follows. Do NOT add any
+delivery premise stronger than the existing outage model; a straggler is a
+message sent into the outage and gets outage semantics, nothing more.
+Handle it by the model's own delivery dichotomy: a receipt satisfying the
+strict delay bound lands before the cutoff (your proved conditional lemma)
+and is absorbed by the step's graded-delivery reasoning; a receipt delayed
+by the outage lands before `max(send, GST) + Δ` (your after-GST corollary)
+and is handled exactly as the induction already handles every other
+outage-delayed arrival. The key fact making this sufficient: round `r−1`
+is not an included round, so straggler rows are inputs the coverage claim
+never needs — the obligation is only that an additional honest arrival at
+any permitted time preserves the invariant. Prove that preservation
+(coverage monotonicity in honest arrivals) where the step needs it, rather
+than any receipt-timing guarantee. Rebase `roundInvariant_base'` casewise
+on this: rounds through `r−2` by the proved vacuity, round-`(r−1)`
+stragglers deferred to the step under the dichotomy. The point instance
+has no stragglers, so both arms are vacuous and the original base is
+recovered; check this explicitly as before. If invariant preservation
+under an additional honest arrival genuinely fails, stop and report it as
+a finding — that would mean the healing argument depends on the absence of
+honest round-`(r−1)` evidence during the outage, which would be a
+substantive design discovery, not plumbing.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
