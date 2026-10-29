@@ -109,10 +109,9 @@ theorem honest_carried_row_emission (S : Setup V) (rho : NamedRun V)
     {receiver : V} {B : NamedBlock V} {a : NamedAttestation V} {t : Time}
     (hB : NamedRun.processes S rho receiver (.block B) t)
     (ha : a ∈ B.attestations) (hHon : a.val_index ∈ rho.honest) :
-    S.a a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+    (S.node a.val_index).act a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨sent, hsend, hem⟩ := auth.carried_attest receiver B t hB a ha hHon
-  obtain ⟨_, _, _, _, _, _, htime, _⟩ :=
-    Proofs.NamedOutageInputs.emitted_attestation_stages S rho hem
+  have htime := (WindowAction.run_emission_fields S hem).1
   subst sent
   exact ⟨hsend, hem⟩
 
@@ -122,12 +121,11 @@ theorem honest_held_row_emission (S : Setup V) (rho : NamedRun V)
     (hHon : a.val_index ∈ rho.honest) :
     ∃ j : Nat, j < i ∧ ∃ t : Time,
       NamedRun.acceptsAt S rho j receiver (.attest a) t ∧
-      S.a a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+      (S.node a.val_index).act a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨j, hj, t, hacc⟩ := held_row_origin S rho i receiver ha
   obtain ⟨sent, hsend, hem⟩ := NamedNetworkBindings.actual_handles_authenticated
     S rho auth hacc.1 hHon rfl
-  obtain ⟨_, _, _, _, _, _, htime, _⟩ :=
-    Proofs.NamedOutageInputs.emitted_attestation_stages S rho hem
+  have htime := (WindowAction.run_emission_fields S hem).1
   subst sent
   exact ⟨j, hj, t, hacc, hsend, hem⟩
 
@@ -139,7 +137,7 @@ theorem honest_held_ancestor_row_emission (S : Setup V) (rho : NamedRun V)
     (hHon : a.val_index ∈ rho.honest) :
     ∃ j : Nat, j < i ∧ ∃ t : Time,
       NamedRun.acceptsAt S rho j receiver (.block A) t ∧
-      S.a a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+      (S.node a.val_index).act a.round ≤ t ∧ NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
   have hcoh : Proofs.NamedStore.Coherent S.E S.cfg (NamedRun.stateBefore S rho i receiver).st :=
     (Proofs.NamedRuntime.stateBefore_invariants S rho i receiver).1.1.1
   have hA := ancestor_body_mem hcoh.2.2.1 hB hAB
@@ -150,23 +148,79 @@ theorem honest_held_ancestor_row_emission (S : Setup V) (rho : NamedRun V)
       (block_accepts_processes S rho hacc) ha hHon
     exact ⟨j, hj, t, hacc, hsend, hem⟩
 
+/-- A held ancestral row was emitted after its own G0 completion and strictly
+before the read boundary. Acceptance may coincide with emission, as allowed
+by carried-row authentication (PROTOCOL.md `sec:public-handlers`). -/
+theorem honest_held_ancestor_row_before_time (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    (reader : V) (boundary : Time) {B A : NamedBlock V} {a : NamedAttestation V}
+    (hB : B ∈ (NamedRun.stateBeforeTime S rho boundary reader).st.bodies)
+    (hAB : NamedBlock.Preceq A B) (ha : a ∈ A.attestations)
+    (hHon : a.val_index ∈ rho.honest) :
+    Protocol.domain S.E S.hc a.round .g0 ≤ (S.node a.val_index).act a.round ∧
+      (S.node a.val_index).act a.round < boundary ∧
+      NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
+  obtain ⟨i, hread, hbefore⟩ :=
+    NamedRuntime.stateBeforeTime_eq_prefix S rho sch.sorted boundary
+  rw [hread] at hB
+  have hpc := (NamedRuntime.stateBefore_invariants S rho i reader).1.1.1.2.2.1
+  have hA := ancestor_body_mem hpc hB hAB
+  rcases held_block_origin S rho i reader hA with hgen | ⟨j, hj, t, hacc⟩
+  · subst A
+    simp only [NamedBlock.attestations, List.not_mem_nil] at ha
+  · obtain ⟨sent, hsend, hem⟩ := auth.carried_attest reader A t
+      (block_accepts_processes S rho hacc) a ha hHon
+    have htime := (WindowAction.run_emission_fields S hem).1
+    rw [htime] at hsend hem
+    obtain ⟨e, he, _, het⟩ := hacc.1.2
+    have ht : t < boundary := by simpa only [het] using hbefore j e hj he
+    exact ⟨S.act_post_completion a.val_index a.round, lt_of_le_of_lt hsend ht, hem⟩
+
+/-- Before G0 completion, P1 excludes every action of the current or a later
+round (PROTOCOL.md `sec:healing-schedule`). -/
+theorem honest_held_ancestor_row_before_completion (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    (reader : V) (r : Round) {boundary : Time}
+    (hboundary : boundary ≤ Protocol.domain S.E S.hc r .g0)
+    {B A : NamedBlock V} {a : NamedAttestation V}
+    (hB : B ∈ (NamedRun.stateBeforeTime S rho boundary reader).st.bodies)
+    (hAB : NamedBlock.Preceq A B) (ha : a ∈ A.attestations)
+    (hHon : a.val_index ∈ rho.honest) :
+    a.round < r ∧
+      NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
+  obtain ⟨_, ht, hem⟩ :=
+    honest_held_ancestor_row_before_time S rho sch auth reader boundary hB hAB ha hHon
+  exact ⟨S.round_lt_of_act_lt_domain a.val_index (lt_of_lt_of_le ht hboundary), hem⟩
+
+/-- Point schedules recover the original strict history at the paper instant
+through the causal contract (PROTOCOL.md `sec:healing-schedule`). -/
+theorem honest_held_ancestor_row_before_action_point (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (reader : V) (r : Round) {B A : NamedBlock V} {a : NamedAttestation V}
+    (hB : B ∈ (NamedRun.stateBeforeTime S rho (S.a r) reader).st.bodies)
+    (hAB : NamedBlock.Preceq A B) (ha : a ∈ A.attestations)
+    (hHon : a.val_index ∈ rho.honest) :
+    a.round < r ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+  obtain ⟨_, ht, hem⟩ :=
+    honest_held_ancestor_row_before_time S rho sch auth reader (S.a r) hB hAB ha hHon
+  rw [hpoint] at ht hem
+  refine ⟨?_, hem⟩
+  by_contra hnot
+  exact (not_le_of_gt ht) (Assembly.a_mono S (Nat.le_of_not_gt hnot))
+
+/-- The paper checkpoint may contain concurrent rows from its own round;
+the causal emission precedes the checkpoint (PROTOCOL.md `sec:healing-schedule`). -/
 theorem honest_held_ancestor_row_before_action (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
     (reader : V) (r : Round) {B A : NamedBlock V} {a : NamedAttestation V}
     (hB : B ∈ (NamedRun.stateBeforeTime S rho (S.a r) reader).st.bodies)
     (hAB : NamedBlock.Preceq A B) (ha : a ∈ A.attestations)
     (hHon : a.val_index ∈ rho.honest) :
-    a.round < r ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
-  obtain ⟨i, hread, hbefore⟩ := Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho sch.sorted (S.a r)
-  rw [hread] at hB
-  obtain ⟨j, hj, t, hacc, hsend, hem⟩ :=
-    honest_held_ancestor_row_emission S rho auth i reader hB hAB ha hHon
-  obtain ⟨e, he, _, het⟩ := hacc.1.2
-  have ht : t < S.a r := by simpa only [het] using hbefore j e hj he
-  have hlt : S.a a.round < S.a r := lt_of_le_of_lt hsend ht
-  refine ⟨?_, hem⟩
-  by_contra hnot
-  exact (not_le_of_gt hlt) (Assembly.a_mono S (Nat.le_of_not_gt hnot))
+    a.round ≤ r ∧ NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
+  obtain ⟨_, ht, hem⟩ :=
+    honest_held_ancestor_row_before_time S rho sch auth reader (S.a r) hB hAB ha hHon
+  exact ⟨S.round_le_of_act_lt_a a.val_index ht, hem⟩
 
 #print axioms emitted_same_round_unique
 #print axioms held_block_origin
@@ -175,6 +229,9 @@ theorem honest_held_ancestor_row_before_action (S : Setup V) (rho : NamedRun V)
 #print axioms honest_held_row_emission
 #print axioms honest_held_ancestor_row_emission
 #print axioms honest_held_ancestor_row_before_action
+#print axioms honest_held_ancestor_row_before_time
+#print axioms honest_held_ancestor_row_before_completion
+#print axioms honest_held_ancestor_row_before_action_point
 end DecoupledConsensusModel.Proofs.NamedOutageProvenance
 
 end

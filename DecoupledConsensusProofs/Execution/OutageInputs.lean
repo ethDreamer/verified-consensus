@@ -1,4 +1,5 @@
 module
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowActionPoint
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusInternal.Definitions.NamedJointOutage
 public import DecoupledConsensusProofs.Protocol.Duties.Inputs.ActionSources
@@ -57,8 +58,8 @@ private theorem tick_attestation_fields (gc : Protocol.GradeContract V) (S : Set
     (t : Time) (a : NamedAttestation V)
     (h : NamedObject.attest a ∈
       (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node v) st record t).2.2) :
-    t = S.a a.round ∧ (S.node v).awake a.round = true ∧ a.val_index = v := by
-  sorry -- SORRY(vote-window): Emission time is Node.act, not S.a; migrate the point-time callers.
+    t = (S.node v).act a.round ∧ (S.node v).awake a.round = true ∧ a.val_index = v :=
+  WindowAction.tick_attestation_fields gc S v st record t a h
 
 private theorem action_read_round (S : Setup V) (before : NamedNodeState V) (r : Round) :
     S.hc.round_of (actionReadFrom S before r).st.core.s = r :=
@@ -90,33 +91,27 @@ theorem emitted_attestation_stages (S : Setup V) (rho : NamedRun V)
     ∃ i : Nat, rho.events[i]? = some (.tick v t) ∧
       NamedObject.attest a ∈ NamedRun.emittedAt S rho i v t ∧
       let before := NamedRun.stateBefore S rho i v
-      let n := actionReadFrom S before a.round
+      let n := NamedActionReads.windowActionReadFrom S v before a.round
       let gc := NamedProfile.gradeContract n.cache
       (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node v)
         n.st n.record).2.2 = a ∧
       a.val_index = v ∧ a.round = S.hc.round_of n.st.core.s ∧
-      t = S.a a.round ∧ (S.node v).awake a.round = true := by
-  obtain ⟨i, hi, ho⟩ := hem
-  obtain ⟨ht, hawake, hval⟩ := tick_attestation_fields _ S v _ _ t a ho
-  subst t
-  have ha := ho
-  change NamedObject.attest a ∈
-    (Execution.NamedNode.tick S v (NamedRun.stateBefore S rho i v) (S.a a.round)).2 at ha
-  rw [tick_at_action] at ha
-  simp only [ite_eq_left hawake, List.mem_singleton, NamedObject.attest.injEq] at ha
-  exact ⟨i, hi, ho, ha.symm, hval, (action_read_round S _ a.round).symm, rfl, hawake⟩
+      t = (S.node v).act a.round ∧ (S.node v).awake a.round = true :=
+  WindowAction.run_emission_stages S rho hem
 
 theorem emitted_attestation_head (S : Setup V) (rho : NamedRun V)
     {v : V} {a : NamedAttestation V} {t : Time}
     (hem : NamedRun.emits S rho v (.attest a) t) :
     ∃ i : Nat, rho.events[i]? = some (.tick v t) ∧
       NamedObject.attest a ∈ NamedRun.emittedAt S rho i v t ∧
-      let n := actionReadFrom S (NamedRun.stateBefore S rho i v) a.round
+      let n := NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) a.round
       ∃ H : NamedBlock V, H ∈ n.st.bodies ∧ a.confirmed = some H.root := by
   obtain ⟨i, hi, ho, hrow, _⟩ := emitted_attestation_stages S rho hem
   refine ⟨i, hi, ho, ?_⟩
-  let n := actionReadFrom S (NamedRun.stateBefore S rho i v) a.round
-  have hinv := action_read_invariant S rho i v a.round
+  let n := NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) a.round
+  have hinv := WindowAction.windowRead_invariant S v
+    (NamedRun.stateBefore S rho i v) ((S.node v).act a.round)
+    (Proofs.NamedRuntime.stateBefore_invariants S rho i v).1
   obtain ⟨B, hB, hhead⟩ := Proofs.NamedConfirmationMembership.attestation_input_head n.cache
     S.E S.hc S.cfg (S.node v) n.st hinv
   have htree : n.st.core.T = n.st.bodies.image NamedBlock.erase := hinv.1.1.1
@@ -127,6 +122,21 @@ theorem emitted_attestation_head (S : Setup V) (rho : NamedRun V)
   change (Protocol.attestation_input_with (NamedProfile.gradeContract n.cache)
     S.E S.hc (S.node v) n.st.core.toHealing).confirmed = a.confirmed at hconfirmed
   exact hconfirmed.symm.trans (hhead.trans (congrArg some (Proofs.NamedWire.erase_root H)))
+/-- An emission explicitly at the paper instant uses the paper input read. -/
+theorem emitted_attestation_head_at_point (S : Setup V) (rho : NamedRun V)
+    {v : V} {a : NamedAttestation V}
+    (hem : NamedRun.emits S rho v (.attest a) (S.a a.round)) :
+    ∃ i : Nat, rho.events[i]? = some (.tick v (S.a a.round)) ∧
+      NamedObject.attest a ∈ NamedRun.emittedAt S rho i v (S.a a.round) ∧
+      let n := actionReadFrom S (NamedRun.stateBefore S rho i v) a.round
+      ∃ H : NamedBlock V, H ∈ n.st.bodies ∧ a.confirmed = some H.root := by
+  have ht := (WindowAction.run_emission_fields S hem).1
+  obtain ⟨i, hi, ho, H, hH, hroot⟩ := emitted_attestation_head S rho hem
+  refine ⟨i, hi, ho, H, ?_, hroot⟩
+  simpa only [Internal.NamedOutageEntry.actionReadFrom,
+    NamedActionReads.windowActionReadFrom, ← ht,
+    WindowAction.windowReadFrom_point] using hH
+
 
 theorem emittedInRound_iff (S : Setup V) (rho : NamedRun V) (v : V) (k : Round) :
     emittedInRound S rho v k = true ↔

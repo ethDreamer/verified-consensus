@@ -15,6 +15,13 @@ namespace DecoupledConsensusModel.Protocol.HealConfig
 
 variable {V : Type} [DecidableEq V] [Fintype V]
 
+/-- Grade completion respects round order (PROTOCOL.md `sec:grades`). -/
+theorem domain_mono (hc : HealConfig) (E : Env V) (p : Phase)
+    {q r : Round} (hqr : q ≤ r) : domain E hc q p ≤ domain E hc r p := by
+  have hd : 0 ≤ E.Δ := le_of_lt E.Δ_pos
+  simp only [domain, opening, proposal_time, Env.t, opening_slot, slotStart]
+  gcongr
+
 /-- The paper action reads completed grade 0. -/
 theorem a_post_completion (hc : HealConfig) (E : Env V) (r : Round) :
     domain E hc r .g0 ≤ hc.a E.Δ r := by
@@ -52,6 +59,26 @@ end DecoupledConsensusModel.Protocol.HealConfig
 namespace DecoupledConsensusModel.Execution.Setup
 
 variable {V : Type} [DecidableEq V] [Fintype V]
+
+/-- An action strictly before G0 completion belongs to an earlier round
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem round_lt_of_act_lt_domain (S : Setup V) (v : V) {q r : Round}
+    (h : (S.node v).act q < Protocol.domain S.E S.hc r .g0) : q < r := by
+  by_contra hnot
+  exact (not_lt_of_ge (le_trans (S.hc.domain_mono S.E .g0 (Nat.le_of_not_gt hnot))
+    (S.act_post_completion v q))) h
+
+/-- The paper instant may see this round's actions, but no later round
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem round_le_of_act_lt_a (S : Setup V) (v : V) {q r : Round}
+    (h : (S.node v).act q < S.a r) : q ≤ r := by
+  have hnext : S.a r < Protocol.domain S.E S.hc (r + 1) .g0 := by
+    have hend := S.hc.a_before_round_end S.E r
+    have hd := S.E.Δ_pos
+    change S.hc.a S.E.Δ r < _
+    simp only [Protocol.domain, Protocol.Phase.domainOffset]
+    linarith
+  exact Nat.lt_succ_iff.mp (S.round_lt_of_act_lt_domain v (lt_trans h hnext))
 
 /-- An action occurs after the beginning of its round. -/
 theorem opening_le_act (S : Setup V) (v : V) (r : Round) :
