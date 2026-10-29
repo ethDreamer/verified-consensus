@@ -91,25 +91,26 @@ private theorem delayed_call_input
         b ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows b.round := by
   rcases hcall.1 with hdirect | ⟨B, k, before, hF1⟩
   · rcases hdirect with ⟨t, he, hem⟩ | ⟨t, he⟩
-    · have hemit : NamedRun.emits S rho reader (.attest a) t := ⟨i, he, hem⟩
-      obtain ⟨j, hj, _, hrow, _, hround, htime, hawake⟩ :=
-        Proofs.NamedOutageInputs.emitted_attestation_stages S rho hemit
-      have hij : j = i := by
-        obtain ⟨_, hgetj⟩ := List.getElem?_eq_some_iff.mp hj
-        obtain ⟨_, hgeti⟩ := List.getElem?_eq_some_iff.mp he
-        exact (List.Nodup.getElem_inj_iff sch.nodup).mp (by rw [hgetj, hgeti])
-      subst j
-      have ht : t = td := SGArrival.handle_event_time S rho hcall he
+    · have ht : t = td := SGArrival.handle_event_time S rho hcall he
+      subst t
+      obtain ⟨htime, hawake, _⟩ :=
+        Proofs.WindowAction.emitted_at_action_time S reader _ td a hem
       rcases htime with rfl
-      rcases ht.symm with rfl
-      let n := actionReadFrom S (NamedRun.stateBefore S rho i reader) a.round
+      let n := NamedActionReads.windowActionReadFrom S reader
+        (NamedRun.stateBefore S rho i reader) a.round
+      have hrow := ((Proofs.WindowAction.attestation_mem_at_action S reader
+        (NamedRun.stateBefore S rho i reader) a.round a).mp hem).2.symm
+      change (Protocol.NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
+        S.E S.hc (S.node reader) n.st n.record).2.2 = a at hrow
+      have hinv := Proofs.WindowAction.windowRead_invariant S reader
+        (NamedRun.stateBefore S rho i reader) ((S.node reader).act a.round)
+        (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1
       have hpre := (SGArrival.data_at_event S rho sch he reader).1
-      have hd : SGArrival.Data (S.a a.round) n.st :=
-        SGArrival.confirmation_data _ S _ _ _
-          (SGArrival.clock_data S _ _ _ le_rfl hpre)
-      refine ⟨n.st,
-        (Proofs.NamedOutageInputs.action_read_invariant S rho i reader a.round).1.1,
-        hd, hround.symm, ?_⟩
+      have hd : SGArrival.Data ((S.node reader).act a.round) n.st :=
+        SGArrival.window_read_data S reader _ _ _ le_rfl
+          (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1.1.1 hpre
+      refine ⟨n.st, hinv.1.1, hd,
+        Proofs.WindowAction.actionRead_round S reader _ a.round, ?_⟩
       intro b hb
       rw [Proofs.NamedRuntime.stateBefore_tick S rho he,
         SGArrival.action_tick_store S reader _ a.round hawake]

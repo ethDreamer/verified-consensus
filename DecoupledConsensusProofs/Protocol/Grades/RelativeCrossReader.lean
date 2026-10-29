@@ -1,4 +1,5 @@
 module
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowAction
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.ExcludesRefute
 public import DecoupledConsensusProofs.Protocol.Grades.RoundVoterTransport
@@ -241,6 +242,34 @@ private theorem tick_data (gc : Protocol.GradeContract V) (S : Setup V) (bound :
       row_data S bound st _ hs.1 hs.2⟩
   exact (tick_preserves gc S nd t P hclock hprop hgf hconf hatt st record ⟨hcoh, hd⟩).2
 
+/-- Earlier same-tick duties preserve row timestamps at the attestation input
+(PROTOCOL.md `sec:public-handlers`). -/
+private theorem window_read_data (S : Setup V) (reader : V) (before : NamedNodeState V)
+    (bound t : Time) (ht : t ≤ bound)
+    (hcoh : Proofs.NamedStore.Coherent S.E S.cfg before.st) (hd : Data bound before.st) :
+    Data bound (NamedActionReads.windowReadFrom S reader before t).st := by
+  let gc := NamedProfile.gradeContract (NamedActionReads.preparedCache S before t)
+  let nd := S.node reader
+  let P := fun st : Protocol.NamedStore V => Proofs.NamedStore.Coherent S.E S.cfg st ∧ Data bound st
+  have hclock : ∀ st, P st → P (Protocol.NamedStore.setClock S.E st t) := by
+    intro st hs
+    exact ⟨NamedStore.coherent_clock S.E S.cfg st t hs.1, clock_data S bound st t ht hs.2⟩
+  have hprop : ∀ st, P st →
+      P (Protocol.NamedDuties.propose_block_with gc S.E S.hc S.cfg nd st).1 := by
+    intro st hs
+    exact ⟨propose_coherent gc S nd st hs.1, propose_data gc S bound nd st hs.1 hs.2⟩
+  have hgf : ∀ st, P st → P (Protocol.NamedDuties.goldfish_vote_with gc S.E S.hc nd st).1 := by
+    intro st hs
+    exact ⟨NamedDuties.coherent_goldfish_vote gc S.E S.hc S.cfg nd st hs.1,
+      gf_data gc S bound nd st hs.2⟩
+  have hconf : ∀ st s, P st →
+      P (Protocol.NamedDuties.update_confirmation_with gc S.E S.hc st s) := by
+    intro st s hs
+    exact ⟨NamedDuties.coherent_confirmation gc S.E S.hc S.cfg st s hs.1,
+      confirmation_data gc S bound st s hs.2⟩
+  exact (Proofs.WindowAction.windowRead_preserves S reader before t P
+    hclock hprop hgf hconf ⟨hcoh, hd⟩).2
+
 private theorem process_data (S : Setup V) (bound : Time) (st : Protocol.NamedStore V)
     (o : NamedObject V) (hcoh : Proofs.NamedStore.Coherent S.E S.cfg st) (hd : Data bound st) :
     Data bound (NamedReceipt.process S st o) := by
@@ -457,13 +486,15 @@ private theorem block_call_rows_after_event (S : Setup V) (rho : NamedRun V)
     rw [congrArg Prod.fst hcallEq]
     exact ha
 
+/-- The actual action admits its row after all preceding duties
+(PROTOCOL.md `sec:public-handlers`). -/
 private theorem action_tick_store (S : Setup V) (reader : V) (before : NamedNodeState V)
     (q : Round) (hawake : (S.node reader).awake q = true) :
-    (NamedNode.tick S reader before (S.a q)).1.st =
-      let n := actionReadFrom S before q
+    (NamedNode.tick S reader before ((S.node reader).act q)).1.st =
+      let n := NamedActionReads.windowActionReadFrom S reader before q
       (Protocol.NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
-        S.E S.hc (S.node reader) n.st n.record).1 := by
-  sorry -- SORRY(vote-window): Point-time emission is false for window schedules; migrate callers to the actual action read.
+        S.E S.hc (S.node reader) n.st n.record).1 :=
+  Proofs.WindowAction.tick_store_at_action S reader before q hawake
 
 private theorem pool_full_witness (S : Setup V) (st : Protocol.NamedStore V)
     (hcoh : Proofs.NamedStore.Coherent S.E S.cfg st) (k : Round) (b : CombinedAttestation V)
@@ -609,10 +640,8 @@ private theorem accepted_round_floor_cases (S : Setup V) (rho : NamedRun V)
     rcases NamedReceiptCallsF1.tick_new_full_row_origin _ S.E S.hc S.cfg (S.node source)
         (NamedRun.stateBefore S rho i source).st (NamedRun.stateBefore S rho i source).record ta
         a hpre hpost with hem | ⟨B, _, hpre0, hpost0⟩
-    · have hemit : NamedRun.emits S rho source (.attest a) ta := ⟨i, he, hem⟩
-      obtain ⟨_, _, _, _, _, _, ht, _⟩ :=
-        Proofs.NamedOutageInputs.emitted_attestation_stages S rho hemit
-      rw [ht, Proofs.HealingLemmas.round_of_slotOf_a S a.round]
+    · have ht := (Proofs.WindowAction.emitted_at_action_time S source _ ta a hem).1
+      rw [ht, S.act_round source a.round]
     · exact block_new_round_floor S
         (Protocol.NamedStore.setClock S.E (NamedRun.stateBefore S rho i source).st ta)
         B a hpre0 hpost0
@@ -702,25 +731,35 @@ private theorem relay_call_input (S : Setup V) (rho : NamedRun V)
         b ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows b.round := by
   rcases hcall.1 with hdirect | ⟨B, k, before, hF1⟩
   · rcases hdirect with ⟨t, he, hem⟩ | ⟨t, he⟩
-    · have hemit : NamedRun.emits S rho reader (.attest a) t := ⟨i, he, hem⟩
-      obtain ⟨j, hj, _, hrow, _, hround, htime, hawake⟩ :=
-        Proofs.NamedOutageInputs.emitted_attestation_stages S rho hemit
-      have hij : j = i := by
-        obtain ⟨_, hgetj⟩ := List.getElem?_eq_some_iff.mp hj
-        obtain ⟨_, hgeti⟩ := List.getElem?_eq_some_iff.mp he
-        exact (List.Nodup.getElem_inj_iff sch.nodup).mp (by rw [hgetj, hgeti])
-      subst j
-      have ht : t = td := handle_event_time S rho hcall he
+    · have ht : t = td := handle_event_time S rho hcall he
+      subst t
+      obtain ⟨htime, hawake, _⟩ :=
+        Proofs.WindowAction.emitted_at_action_time S reader _ td a hem
       rcases htime with rfl
-      rcases ht.symm with rfl
-      let n := actionReadFrom S (NamedRun.stateBefore S rho i reader) a.round
+      let n := NamedActionReads.windowActionReadFrom S reader
+        (NamedRun.stateBefore S rho i reader) a.round
+      have hrow := ((Proofs.WindowAction.attestation_mem_at_action S reader
+        (NamedRun.stateBefore S rho i reader) a.round a).mp hem).2.symm
+      change (Protocol.NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
+        S.E S.hc (S.node reader) n.st n.record).2.2 = a at hrow
+      have hinv := Proofs.WindowAction.windowRead_invariant S reader
+        (NamedRun.stateBefore S rho i reader) ((S.node reader).act a.round)
+        (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1
       have hpre := (data_at_event S rho sch he reader).1
-      have hd : Data (S.a a.round) n.st :=
-        confirmation_data _ S _ _ _ (clock_data S _ _ _ le_rfl hpre)
-      refine ⟨n.st, (Proofs.NamedOutageInputs.action_read_invariant S rho i reader a.round).1.1,
-        hd, round_bounds_of_clock S a.round r n.st rfl hlo hhi, ?_⟩
+      have hd : Data ((S.node reader).act a.round) n.st :=
+        window_read_data S reader _ _ _ le_rfl
+          (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1.1.1 hpre
+      have hclock : n.st.core.s = S.E.slotOf n.st.core.t := by
+        dsimp only [n, NamedActionReads.windowActionReadFrom]
+        rw [Proofs.WindowAction.windowRead_slot, Proofs.WindowAction.windowRead_time]
+      have htime : n.st.core.t = (S.node reader).act a.round :=
+        Proofs.WindowAction.windowRead_time S reader _ _
+      refine ⟨n.st, hinv.1.1,
+        hd, round_bounds_of_clock S a.round r n.st hclock
+          (by simpa only [htime] using hlo) (by simpa only [htime] using hhi), ?_⟩
       intro b hb
-      rw [Proofs.NamedRuntime.stateBefore_tick S rho he, action_tick_store S reader _ a.round hawake]
+      rw [Proofs.NamedRuntime.stateBefore_tick S rho he,
+        action_tick_store S reader _ a.round hawake]
       change b ∈ (Protocol.NamedAdmission.admit_row S.hc n.st
         (Protocol.NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
           S.E S.hc (S.node reader) n.st n.record).2.2).sg_rows b.round
