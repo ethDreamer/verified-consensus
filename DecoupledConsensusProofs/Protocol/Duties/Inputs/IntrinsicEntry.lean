@@ -1,4 +1,5 @@
 module
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowActionPoint
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.OutageInputs
 public import DecoupledConsensusProofs.Protocol.ChainState.EntryHeight
@@ -66,10 +67,15 @@ theorem emitted_height_signed_source (S : Setup V) (rho : NamedRun V)
       SignedSourceAt S rho i a source entry ∧
       (Protocol.derive_named S.E S.cfg source).h = h ∧
       entry.root = root := by
-  obtain ⟨i, hi, ho, hrow, _, hr, _, _⟩ :=
-    Proofs.NamedOutageInputs.emitted_attestation_stages S rho hem
+  obtain ⟨i, hi, ho, hrow, _, hr, htime, _⟩ :=
+    WindowAction.run_emission_stages S rho hem
+  simp only [NamedActionReads.windowActionReadFrom, ← htime,
+    WindowAction.windowReadFrom_point] at hrow hr
   let n := actionReadFrom S (NamedRun.stateBefore S rho i a.val_index) a.round
   let gc := NamedProfile.gradeContract n.cache
+  change (Protocol.NamedDuties.attest_with gc S.E S.hc (S.node a.val_index)
+    n.st n.record).2.2 = a at hrow
+  change a.round = S.hc.round_of n.st.core.s at hr
   have hinv := Proofs.NamedOutageInputs.action_read_invariant S rho i a.val_index a.round
   have hcoh : Proofs.NamedStore.Coherent S.E S.cfg n.st := hinv.1.1
   have hpair : (Protocol.NamedActions.round_action_with gc S.E S.hc

@@ -135,20 +135,27 @@ private theorem suffix_fields (gc : GradeContract V) (S : Setup V)
     exact ⟨hact.1, hact.2, S.node_val_index v⟩
   · exact False.elim (hprefix h)
 
+/-- The scheduler's attestation fields identify the action under any grade contract. -/
+theorem tick_attestation_fields (gc : GradeContract V) (S : Setup V)
+    (v : V) (st : NamedStore V) (record : NamedRecord)
+    (t : Time) (row : NamedAttestation V)
+    (h : NamedObject.attest row ∈
+      (Protocol.NamedTick.tick gc S.E S.hc S.cfg (S.node v) st record t).2.2) :
+    t = (S.node v).act row.round ∧ (S.node v).awake row.round = true ∧
+      row.val_index = v := by
+  rw [NamedTick.tick_computed_duties] at h
+  dsimp only at h
+  apply suffix_fields _ S v _ record t row _ ?_ h
+  simp only [List.mem_append, no_attest_vote, or_false]
+  exact no_attest_proposal _ _ row
+
 /-- Every emitted attestation identifies its validator's actual action time. -/
 theorem emitted_at_action_time (S : Setup V) (v : V) (before : NamedNodeState V)
     (t : Time) (row : NamedAttestation V)
     (h : NamedObject.attest row ∈ (Execution.NamedNode.tick S v before t).2) :
     t = (S.node v).act row.round ∧ (S.node v).awake row.round = true ∧
-      row.val_index = v := by
-  change NamedObject.attest row ∈
-    (Protocol.NamedTick.tick (NamedProfile.gradeContract (preparedCache S before t))
-      S.E S.hc S.cfg (S.node v) before.st before.record t).2.2 at h
-  rw [NamedTick.tick_computed_duties] at h
-  dsimp only at h
-  apply suffix_fields _ S v _ before.record t row _ ?_ h
-  simp only [List.mem_append, no_attest_vote, or_false]
-  exact no_attest_proposal _ _ row
+      row.val_index = v :=
+  tick_attestation_fields _ S v before.st before.record t row h
 
 /-- A run emission identifies its author's action without schedule assumptions. -/
 theorem run_emission_fields (S : Setup V) {rho : Run V} {v : V}
@@ -187,6 +194,24 @@ theorem attestation_mem_at_action (S : Setup V) (v : V) (before : NamedNodeState
     split
     · split <;> simp only [List.not_mem_nil, List.mem_singleton, reduceCtorEq, not_false_eq_true]
     · simp only [List.not_mem_nil, not_false_eq_true]
+
+/-- The indexed emission exposes the actual input after preceding same-tick duties. -/
+theorem run_emission_stages (S : Setup V) (rho : Run V)
+    {v : V} {row : NamedAttestation V} {t : Time}
+    (hem : NamedRun.emits S rho v (.attest row) t) :
+    ∃ i : Nat, rho.events[i]? = some (.tick v t) ∧
+      NamedObject.attest row ∈ NamedRun.emittedAt S rho i v t ∧
+      let n := windowActionReadFrom S v (NamedRun.stateBefore S rho i v) row.round
+      (NamedDuties.attest_with (NamedProfile.gradeContract n.cache)
+        S.E S.hc (S.node v) n.st n.record).2.2 = row ∧
+      row.val_index = v ∧ row.round = S.hc.round_of n.st.core.s ∧
+      t = (S.node v).act row.round ∧ (S.node v).awake row.round = true := by
+  obtain ⟨ht, hawake, hval⟩ := run_emission_fields S hem
+  subst t
+  obtain ⟨i, hi, ho⟩ := hem
+  have hrow := ((attestation_mem_at_action S v
+    (NamedRun.stateBefore S rho i v) row.round row).mp ho).2.symm
+  exact ⟨i, hi, ho, hrow, hval, (actionRead_round S v _ row.round).symm, rfl, hawake⟩
 
 /-- Exact run emissions use the strict-time input at the validator's own action. -/
 theorem run_emission_iff (S : Setup V) (rho : Run V)
