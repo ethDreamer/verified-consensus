@@ -1,6 +1,10 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.RoundBase
+public import DecoupledConsensusProofs.Protocol.Grades.CommonSupportBase
+public import DecoupledConsensusProofs.Protocol.Grades.SGFromSupport
+public import DecoupledConsensusProofs.Protocol.Handlers.CheckpointRows
+public import DecoupledConsensusProofs.Execution.ConflictingCarrierBand
 public import DecoupledConsensusProofs.Protocol.ForkChoice.Goldfish.RoundStep
 public import DecoupledConsensusProofs.Protocol.Grades.SupportCarry
 public import DecoupledConsensusProofs.Objects.IntervalInduction

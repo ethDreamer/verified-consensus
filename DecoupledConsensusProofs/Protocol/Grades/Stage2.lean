@@ -2,6 +2,10 @@ module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Protocol.Grades.Premises
 public import DecoupledConsensusProofs.Execution.RoundBase
+public import DecoupledConsensusProofs.Protocol.Grades.CommonSupportBase
+public import DecoupledConsensusProofs.Protocol.Grades.SGFromSupport
+public import DecoupledConsensusProofs.Protocol.Handlers.CheckpointRows
+public import DecoupledConsensusProofs.Execution.ConflictingCarrierBand
 public import DecoupledConsensusProofs.Protocol.Grades.Interpolation
 public import DecoupledConsensusProofs.Execution.OutageInputs
 public import DecoupledConsensusProofs.Protocol.Grades.HealthyHeadReady
@@ -169,7 +173,8 @@ theorem stage2_preBoundaryFrames_above (S : Setup V) (rho : NamedRun V) (b0 b1 :
       hmargin hsleep hentry
   exact sg_at_domain_read_of_common_support_at S rho b0 b1 s q Pm hexec hslash hsleep hforming
     hscope hqpos hsq hhor hmargin hno hband hentry hheld0
-    (base_hpost S rho b0 q Pm hfirst) ⟨hconf1, hconf2⟩ v hv hseed
+    (base_hpost S rho b0 q Pm
+      (base_actions_before_of_paper_lt S b0 q hqpos hqb0)) ⟨hconf1, hconf2⟩ v hv hseed
     (common_support_base_at S rho b0 b1 v s q Pm hexec hsleep hforming hv hmargin hseed
       hscope hno hconf1 hconf2 hbudget hentry hqpos hgap hrb1 hfirst) w hw
 
