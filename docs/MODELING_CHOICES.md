@@ -548,6 +548,38 @@ newer head under all the base invariant's premises. Its conclusion is that
 timing, compatibility, and non-equivocation alone do not establish the
 required monotonicity; a proof of the straggler head floor is still needed.
 
+The pre-boundary frame clause does supply a straggler's frozen certificate.
+`Protocol/Grades/StragglerFrame.lean` proves that its round `q` satisfies
+`s + 1 ≤ q` and `S.a q < b0`, and hence obtains the emitter's own opening
+frame from `PreBoundaryFrames`. The finalized-prefix arm carries forward by
+finality monotonicity. The raw G2 arm persists to the strict read at `act v q`
+by the within-round cache theorem, clipped against that read's finality.
+This transport uses no delivery or included-round invariant premise.
+
+Transport of a raw certificate is distinct from preservation of its active
+FG projection. The latter needs the protected prefix either below the FG
+root or in the consuming store's filtered tree, together with appropriate
+finality compatibility. The existing FG non-interference proof derives these
+facts from compatible entry history and a conflicting-carrier height bound.
+User-record retention does not replace that derivation: the attestation
+selector reads `live_confirmed`, while `latest_confirmed` and `latest_stable`
+are client-facing records. `live_confirmed` may retreat to the FG root on an
+ineligible confirmation walk. The G0 veto tests compatibility, so it allows
+ancestors of the protected prefix as well as descendants.
+
+`scripts/VoteWindowRecordFloor.lean` checks the local distinction. Initially
+`P` is viable and is the SG vote. Adding a conflicting height-3 body removes
+the height-1 `P` from the viable tree. A confirmation update with no Goldfish
+majority then returns genesis as `live_confirmed` and as the SG vote, even
+though both user records still equal `P`, finality is unchanged, and the raw
+G0/G2 roots still equal `P`. The update is at time 42, a support cutoff in
+round 2 and a permitted P2 late edge before round 3's early G2 at 43.
+The supplied post-state map is not proved to be the derived map of a reachable
+named store, and the example does not authenticate an arriving carrier or
+instantiate an outage execution. It shows why record retention and the G0
+veto alone cannot supply the missing FG-preservation step; it is not a
+counterexample to the full straggler floor or the protected outage theorem.
+
 ## 12 Scope of this document
 
 This document covers the current model. It records no history of a choice, and
