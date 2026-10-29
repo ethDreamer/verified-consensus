@@ -181,6 +181,34 @@ theorem base_consumer_timing_below_cutoff :
   have hbad := h 0
   norm_num [S, node, hc, E, HealConfig.opening_slot, slotStart] at hbad
 
+-- P2 constrains send+Delta, while the outage permits the partial-synchrony
+-- deadline max(send,GST)+Delta. These bounds differ for a straggler during
+-- the asynchronous interval. This is a deadline counterexample, not a run.
+def outageS : Setup (Fin 1) :=
+  { S with E := { E with t_GST := 32, t_GST_nonneg := by decide } }
+
+theorem straggler_outage_deadline_gap :
+    (outageS.node 0).act 1 = 23 ∧
+    outageS.E.t_GST = 32 ∧
+    (outageS.node 0).act 1 + outageS.E.Δ ≤ early outageS.E outageS.hc 2 .g2 ∧
+    ¬ ((outageS.node 0).act 1 + outageS.E.Δ ≤ 23) ∧
+    (outageS.node 0).act 1 ≤ 32 ∧
+    32 < max ((outageS.node 0).act 1) outageS.E.t_GST + outageS.E.Δ ∧
+    ¬ ((32 : Time) < early outageS.E outageS.hc 2 .g2) := by
+  decide
+
+theorem partial_synchrony_deadline_not_early :
+    ¬ (∀ received : Time,
+      (outageS.node 0).act 1 ≤ received →
+      received < max ((outageS.node 0).act 1) outageS.E.t_GST + outageS.E.Δ →
+      received < early outageS.E outageS.hc 2 .g2) := by
+  intro h
+  have hbad := h 32 (by decide) (by decide)
+  have hnot : ¬ ((32 : Time) < early outageS.E outageS.hc 2 .g2) := by decide
+  exact hnot hbad
+
+#print axioms straggler_outage_deadline_gap
+#print axioms partial_synchrony_deadline_not_early
 #print axioms base_consumer_timing_below_cutoff
 #print axioms base_hpost_fails
 #print axioms schedule

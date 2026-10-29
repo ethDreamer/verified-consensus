@@ -494,6 +494,28 @@ G2 cutoff, and `act (r - 1) = 23`. The diagnostic checks these timing
 premises separately from any full outage-regime construction. They do not
 justify the actual-action boundary hypothesis on their own.
 
+The first-round classification separates older emissions from stragglers.
+P2 implies `act v q + Δ < S.a (q + 1)`. Minimality of the selected positive
+round then gives `act v q + Δ < b0` whenever `q + 1 < r`. Any prior-round
+emission at or after `b0` must therefore have `q + 1 = r`; P2 gives its
+deadline `send + Δ ≤ early E hc r .g2`. A receipt strictly before that
+deadline is strictly before the cutoff. With the point-instance equation
+and `S.a (r - 1) < b0`, there are no stragglers, recovering the vacuous base.
+These facts are checked in `Execution/RoundBase.lean`, with the structural
+late-edge bound in `Protocol/Schedule/VoteWindow.lean`.
+
+The deadline classification alone does not promise receipts during an outage.
+`HealthyPrefixDelivery` applies only when `send + Δ ≤ b0`, whereas
+`PartialSynchrony` promises a receipt before `max send GST + Δ`. After GST
+this reduces to the P2 deadline, subject to the existing horizon and exclusion
+conditions; `first_round_straggler_handles_after_gst` proves that connection.
+Inside the asynchronous interval the bounds can differ: with send time 23,
+`GST = b1 = 32`, and early G2 cutoff 27, P2 gives `24 ≤ 27`, but a receipt
+at 32 satisfies the partial-synchrony bound `32 < 33`. Healthy-prefix delivery
+does not apply because `24 > b0 = 23`. The diagnostic checks this deadline
+gap with a valid window Setup. It does not construct a full outage run or
+claim that extra honest support breaks a coverage invariant.
+
 ## 12 Scope of this document
 
 This document covers the current model. It records no history of a choice, and
