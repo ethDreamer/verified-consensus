@@ -263,6 +263,35 @@ along a single honest timeline is not available across `[b0, act (r−1)]`,
 stop and report it as a finding — that would locate a real sensitivity of
 healing to the window, and is exactly what this exercise exists to surface.
 
+*Resolution of the straggler FG-preservation question (2026-10-29)*: your
+RecordFloor diagnostic is accepted — frame retention and field monotonicity
+cannot give the floor, because the SG selector reads the active FG
+projection and a high carrier can destroy viability of a retained head.
+The missing producer is FG noninterference extended past the paper cut, and
+the answer to your question is yes: break the circularity with a mutual
+well-founded induction over the event order, in first-violation form. Prove
+jointly, by strong induction on the event index: (A) every honest entry
+emitted at or before event `k` — stragglers included — is compatible with
+the prefix, using your proved frame transport plus noninterference at
+strictly earlier events, since an emitter's state at `act` is built only
+from receipts strictly before it; and (B) every carrier received at or
+before event `k` respects the conflicting-carrier band, because its high
+entries require honest signed entries which, by unforgeability, were
+emitted strictly earlier and are compatible by (A). Restate the
+`IntrinsicHighEntryHistory` and `IntrinsicConflictingCarrierBand` producers
+event-indexed (they are internal; this is authorized), with the existing
+`initial_intrinsic_history` paper-cut producer as the base case for
+pre-`b0` events — part (i) already places every earlier honest emission
+before `b0`. The only inputs are unforgeability and the existing causal
+delivery order; no regime premise is added or strengthened. At the point
+instance there are no post-boundary honest entries, the induction
+degenerates to the existing one-shot argument, and the original producers
+are recovered; check this explicitly. If the induction fails because a
+high carrier entry need not contain any honest signed entry emitted
+strictly earlier — that is, the adversary alone can raise `h_max` past the
+band — stop and report it as a finding: that would be a quorum-model
+discovery about the FG, not plumbing, and it must not be papered over.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
