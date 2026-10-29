@@ -704,6 +704,24 @@ theorem frame_phase_window_eq (S : Setup V) (rho : NamedRun V)
     (cacheAtRound (preparedCache S before ((S.node v).act r)) r)) p = _
   rw [phase_clip_frame, hprep, hraw, ← key]
 
+/-- A captured phase value at an actual action input is clipped once at
+that input's finality, even if finality advanced during the earlier duties. -/
+theorem frame_phase_window_value (S : Setup V) (rho : NamedRun V)
+    (i : Nat) (v : V) (r : Round) (p : Phase) (value : Option (Block V))
+    (hbase : phaseResult (readFrame (NamedRun.stateBefore S rho i v).cache
+      (NamedRun.stateBefore S rho i v).st.core.toHealing r) p =
+        some (value.map (fun B => clipGrade B (NamedRun.stateBefore S rho i v).st.core.F)))
+    (hmono : Block.Preceq (NamedRun.stateBefore S rho i v).st.core.F
+      (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.F) :
+    let n := NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r
+    phaseResult (readFrame n.cache n.st.core.toHealing r) p =
+      some (value.map (fun B => clipGrade B n.st.core.F)) := by
+  dsimp only
+  rw [frame_phase_window_eq S rho i v r p _ hbase]
+  cases value with
+  | none => rfl
+  | some B => exact congrArg (fun X => some (some X)) (clip_after_advance B _ _ hmono)
+
 /-- **Checkpoint corollary.** A G2 result of round `r` completed at any strict
 read between its domain tick and the action time is the one the round-`r`
 checkpoint reads, clipped against the checkpoint's finalized root. -/

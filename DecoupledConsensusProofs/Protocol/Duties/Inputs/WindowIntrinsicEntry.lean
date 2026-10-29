@@ -112,6 +112,28 @@ theorem signed_source_entry_scope (S : Setup V) (rho : NamedRun V)
 
 /-- Admitting the emitted row does not change the retained bodies or the
 FG projection read by the attestation. -/
+theorem emission_post_projection (S : Setup V) (rho : NamedRun V)
+    {i : Nat} {a : NamedAttestation V}
+    (hi : rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)))
+    (hem : NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+      ((S.node a.val_index).act a.round)) :
+    let n := NamedActionReads.windowActionReadFrom S a.val_index
+      (NamedRun.stateBefore S rho i a.val_index) a.round
+    let post := NamedRun.stateBefore S rho (i + 1) a.val_index
+    post.st.bodies = n.st.bodies ∧ post.st.core.F = n.st.core.F ∧
+      get_fg_root post.st.core.toHealing.toFG = get_fg_root n.st.core.toHealing.toFG ∧
+      get_filtered_block_tree post.st.core.toHealing.toFG =
+        get_filtered_block_tree n.st.core.toHealing.toFG := by
+  have hawake := (WindowAction.run_emission_fields S
+    (show NamedRun.emits S rho a.val_index (.attest a) _ from ⟨i, hi, hem⟩)).2.1
+  dsimp only
+  rw [NamedRuntime.stateBefore_tick S rho hi]
+  change (Execution.NamedNode.tick S a.val_index _ _).1.st.bodies = _ ∧ _
+  rw [WindowAction.tick_store_at_action S a.val_index _ a.round hawake]
+  dsimp only [NamedDuties.attest_with, NamedAdmission.admit_row, on_sg_vote]
+  split_ifs <;> exact ⟨rfl, rfl, rfl, rfl⟩
+
+/-- The signed-source specialization of the actual emission projection. -/
 theorem signed_source_post_projection (S : Setup V) (rho : NamedRun V)
     {i : Nat} {a : NamedAttestation V} {source entry : NamedBlock V}
     (hs : WindowSignedSourceAt S rho i a source entry) :
@@ -121,16 +143,8 @@ theorem signed_source_post_projection (S : Setup V) (rho : NamedRun V)
     post.st.bodies = n.st.bodies ∧ post.st.core.F = n.st.core.F ∧
       get_fg_root post.st.core.toHealing.toFG = get_fg_root n.st.core.toHealing.toFG ∧
       get_filtered_block_tree post.st.core.toHealing.toFG =
-        get_filtered_block_tree n.st.core.toHealing.toFG := by
-  obtain ⟨hi, hem, _⟩ := hs
-  have hawake := (WindowAction.run_emission_fields S
-    (show NamedRun.emits S rho a.val_index (.attest a) _ from ⟨i, hi, hem⟩)).2.1
-  dsimp only
-  rw [NamedRuntime.stateBefore_tick S rho hi]
-  change (Execution.NamedNode.tick S a.val_index _ _).1.st.bodies = _ ∧ _
-  rw [WindowAction.tick_store_at_action S a.val_index _ a.round hawake]
-  dsimp only [NamedDuties.attest_with, NamedAdmission.admit_row, on_sg_vote]
-  split_ifs <;> exact ⟨rfl, rfl, rfl, rfl⟩
+        get_filtered_block_tree n.st.core.toHealing.toFG :=
+  emission_post_projection S rho hs.1 hs.2.1
 
 /-- The original signed-source contract is recovered at the point instance. -/
 theorem signed_source_at_point (S : Setup V) (rho : NamedRun V)
@@ -220,6 +234,7 @@ theorem initial_intrinsic_history_point (S : Setup V) (rho : NamedRun V)
 #print axioms emitted_height_signed_source
 #print axioms emitted_height_signed_source_at
 #print axioms signed_source_entry_scope
+#print axioms emission_post_projection
 #print axioms signed_source_post_projection
 #print axioms signed_source_at_point
 #print axioms initial_intrinsic_history

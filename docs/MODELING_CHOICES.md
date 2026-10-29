@@ -608,9 +608,23 @@ initial history. P1 excludes current-round emissions from this base domain;
 the domain contains every prior-round straggler. This does not replace the
 paper checkpoint or claim compatibility of current-round entries there.
 The original point history and one-shot band producers are explicitly
-recovered from the event contracts. The SG emitted-head floor and the
-round-invariant consumers still require integration; signed-entry
-compatibility alone is not an emitted-head coverage claim.
+recovered from the event contracts. `WindowSGFloor.straggler_confirmed_head_floor` derives the SG emitted-head
+floor from that induction for every actual honest straggler, including rows
+with an empty height pair. All phases are closed at the actual action;
+when it coincides with G0 completion, preparation closes that phase before
+the duty reads it. The active G2-to-anchor relation is proved for the
+actual input after its earlier duties, rather than identified with the
+paper-time read. These facts cover every branch of `currentSGVote`, and
+run-scoped root injectivity identifies the emitted head with its resolved
+named body. No receipt deadline or new outage premise is used.
+
+`straggler_arrival_preserves` applies the derived floor to the two
+covering-arrival lemmas. Its local view inputs identify the new tokens'
+actual straggler emissions and resolved bodies; they do not assume head
+coverage. Given the existing view inclusions and non-equivocation condition,
+it preserves support and introduces no opposition at any permitted receipt
+time. The casewise round-invariant base/step and its current-round history
+consumers have not yet been wired to these producers.
 
 ## 12 Scope of this document
 

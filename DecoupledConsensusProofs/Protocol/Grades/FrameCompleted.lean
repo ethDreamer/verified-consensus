@@ -759,6 +759,53 @@ theorem frame_phase_completed_in_round (S : Setup V) (rho : NamedRun V)
       (domain_nonneg S hr p) htick)
   exact frame_phase_completed_of_tick_in_round S rho core v r hr p i hi t ht hta
 
+/-- Completed phases strictly before an actual action retain their captured
+value through all duties preceding its attestation. -/
+theorem frame_phase_completed_window (S : Setup V) (rho : NamedRun V)
+    (core : NamedAdmissibleCore S rho) (v : V) (hv : v ∈ rho.honest)
+    (r : Round) (hr : 0 < r) (p : Phase) (i : Nat)
+    (hi : rho.events[i]? = some (.tick v ((S.node v).act r)))
+    (ht : domain S.E S.hc r p < (S.node v).act r)
+    (hmono : Block.Preceq (NamedRun.stateBefore S rho i v).st.core.F
+      (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.F) :
+    let n := NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r
+    phaseResult (readFrame n.cache n.st.core.toHealing r) p =
+      some ((freezeRoot S.E
+        (NamedRun.stateBeforeTime S rho (domain S.E S.hc r p) v).st.core.toHealing.gradeView
+        (NamedRun.stateBeforeTime S rho (domain S.E S.hc r p) v).st.core.F S.hc.η_SG r
+        (early S.E S.hc r p) (late S.E S.hc r p)).map (fun B => clipGrade B n.st.core.F)) := by
+  have hhor := (core.in_horizon _ (List.mem_of_getElem? hi)).2
+  have hbase := frame_phase_completed_in_round S rho core v hv r hr p
+    ((S.node v).act r) ht (S.act_before_round_end v r).le (ht.le.trans hhor)
+  rw [← Proofs.NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hi] at hbase
+  exact FrameForward.frame_phase_window_value S rho i v r p _ hbase hmono
+
+/-- A phase that completes exactly at this action is closed by preparation
+of the actual input, before the attestation duty reads it. -/
+theorem frame_phase_closed_at_window_domain (S : Setup V) (rho : NamedRun V)
+    (i : Nat) (v : V) (r : Round) (p : Phase)
+    (ht : (S.node v).act r = domain S.E S.hc r p) :
+    let n := NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r
+    phaseResult (readFrame n.cache n.st.core.toHealing r) p ≠ none := by
+  let before := NamedRun.stateBefore S rho i v
+  let n := NamedActionReads.windowActionReadFrom S v before r
+  change phaseResult (clipFrame n.st.core.F
+    (cacheAtRound (preparedCache S before ((S.node v).act r)) r)) p ≠ none
+  rw [phase_clip_frame]
+  apply clipResult_ne_none
+  unfold preparedCache NamedActionReads.preparedCache onPhaseTick
+  rw [S.act_round v r]
+  let al := alignRound before.cache r
+  change phaseResult (cacheAtRound (clipCache before.st.core.F
+    ⟨al.round, completeFrame S.E S.hc before.st.core.toHealing al.round
+      ((S.node v).act r) al.current,
+      completeFrame S.E S.hc before.st.core.toHealing (al.round + 1)
+        ((S.node v).act r) al.next⟩) r) p ≠ none
+  rw [phase_clip]
+  apply clipResult_ne_none
+  exact phase_domain_cache S.E S.hc before.st.core.toHealing al
+    ((S.node v).act r) r p ht (Or.inl (alignRound_round before.cache r).symm)
+
 /-- **Old form, as a corollary.** `a_r` is strictly inside round `r`
 (`FrameForward.a_lt_opening_succ`), so the action-time bound is the special case
 of the clock-round bound. -/
