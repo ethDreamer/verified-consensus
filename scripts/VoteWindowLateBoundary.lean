@@ -1,7 +1,7 @@
 import DecoupledConsensusProofs.Execution.OutageInputs
 
 /-!
-Late actions invalidate the vacuity argument in `NamedOutageClosure.base_hpost`.
+Late actions invalidate a vacuous base case with only a paper-time boundary.
 A complete public tick schedule emits a round-zero row at the boundary 7,
 although the previous paper action is at 6. The candidate prefix P is arbitrary,
 as allowed by that lemma; this is not a counterexample to an outage regime.
@@ -144,6 +144,44 @@ theorem base_hpost_fails :
 
 theorem first_boundary : S.a (1 - 1) < 7 := by decide
 
+-- The first-included-round arithmetic used by StableCoverageConsumer also
+-- permits a boundary below the next early cutoff, even with formation and
+-- retention margins. This checks timing premises, not a full outage regime.
+def boundaryRun : NamedRun (Fin 1) where
+  honest := Finset.univ
+  horizon := 40
+  events := (List.range 41).map (fun n => .tick 0 (n : Time))
+
+theorem first_included_round :
+    ∀ q : Round, 0 < q → 23 ≤ S.a q → 2 ≤ q := by
+  intro q _ hq
+  by_contra hnot
+  have hqLt : q < 2 := Nat.lt_of_not_ge hnot
+  interval_cases q <;>
+    norm_num [Setup.a, HealConfig.a, HealConfig.opening_slot, slotStart, S, E, hc] at hq
+
+theorem base_consumer_timing_below_cutoff :
+    ((0 : Time) ≤ 23 ∧ (23 : Time) ≤ 32 ∧ 32 ≤ boundaryRun.horizon) ∧
+    S.E.t_GST ≤ 32 ∧ (∃ k : Nat, (23 : Time) = (k : Time) * S.E.Δ) ∧
+    Internal.NamedStableChainOutage.FormationMargin S 0 23 ∧
+    Internal.NamedJointOutage.DomainIncluded S boundaryRun 23 2 ∧
+    domain S.E S.hc 2 .g2 ≤ 32 + S.E.Δ ∧
+    Internal.NamedStableChainOutage.RetentionDuration S boundaryRun 0 32 ∧
+    S.a (2 - 1) < 23 ∧
+    (∀ q : Round, 0 < q → 23 ≤ S.a q → 2 ≤ q) ∧
+    23 < early S.E S.hc 2 .g2 ∧
+    ¬ (∀ v, (S.node v).act (2 - 1) < 23) := by
+  refine ⟨by decide, by decide, ⟨23, rfl⟩,
+    by unfold Internal.NamedStableChainOutage.FormationMargin; decide,
+    by unfold Internal.NamedJointOutage.DomainIncluded; decide,
+    by decide,
+    by unfold Internal.NamedStableChainOutage.RetentionDuration; decide, by decide,
+    first_included_round, by decide, ?_⟩
+  intro h
+  have hbad := h 0
+  norm_num [S, node, hc, E, HealConfig.opening_slot, slotStart] at hbad
+
+#print axioms base_consumer_timing_below_cutoff
 #print axioms base_hpost_fails
 #print axioms schedule
 end VoteWindowLateBoundary

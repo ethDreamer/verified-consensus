@@ -471,8 +471,28 @@ round-0 attestation is emitted at `b0`. Consequently, a bound on the previous
 paper instant alone does not make post-boundary emissions from previous
 rounds impossible. `scripts/VoteWindowLateBoundary.lean` checks this case
 with every public tick through time 7 and refutes the corresponding vacuous
-base-case claim for an arbitrary candidate prefix. This example does not
-supply the additional premises of an outage regime.
+base-case claim with only the paper-time boundary for an arbitrary candidate
+prefix. This example does not supply the additional premises of an outage regime.
+
+The vacuous base case `NamedOutageClosure.base_hpost` therefore assumes
+`∀ v, (S.node v).act (r - 1) < b0`, retaining `b0` and its original
+confirmation conclusion. Each validator's actions increase strictly with the
+round, so this excludes every earlier-round emission at or after `b0`.
+For `r > 0`, P2 and positive delay discharge the hypothesis whenever
+`early E hc r .g2 ≤ b0`. In particular, the pre-boundary frame consumer's
+`S.a r < b0` supplies that cutoff bound. Under the point-instance equation,
+the original `S.a (r - 1) < b0` premise also implies the new hypothesis;
+`base_hpost_point` checks recovery of the unchanged conclusion explicitly.
+
+The first-included-round selector has a different timing condition: it chooses
+the first positive `r` with `b0 ≤ S.a r`. This does not itself put `b0`
+after round `r`'s early G2 cutoff. With the same `R = 4` window, take
+`s = 0`, `r = 2`, `b0 = 23`, `b1 = 32`, and horizon 40. Formation and
+retention margins, domain inclusion, the domain deadline, minimal-round
+selection, and `S.a (r - 1) < b0` all hold, yet `b0 = 23 < 27`, the early
+G2 cutoff, and `act (r - 1) = 23`. The diagnostic checks these timing
+premises separately from any full outage-regime construction. They do not
+justify the actual-action boundary hypothesis on their own.
 
 ## 12 Scope of this document
 
