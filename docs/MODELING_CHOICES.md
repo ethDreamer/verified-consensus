@@ -446,6 +446,34 @@ The paper's point schedule `T_r + 6Δ` satisfies all three conditions using
 condition states an implicit property of that schedule explicitly. It does not
 alter which times the scheduler may tick.
 
+Honest-row history is causal. A carried honest row was emitted at its author's
+`Node.act` no later than the carrier was processed. For a body held in
+`stateBeforeTime` at a boundary, that emission is strictly before the boundary
+and no earlier than the row's G0 completion. At the paper instant `S.a r`,
+these bounds give `row.round ≤ r`: another validator's round-`r` row can
+already be present. Before any boundary at or before round-`r` G0 completion,
+P1 gives the strict bound `row.round < r`. Specializing every `Node.act r`
+to `S.a r` also recovers the original strict bound at the paper instant.
+The causal contract and both corollaries are proved in
+`Execution/OutageProvenance.lean`. P2 separately places strict delivery of
+each round's action before all of the next round's early grade cutoffs.
+
+For example, with `Δ = 1`, `R = 3`, and `act r = 12r + 1`, an honest
+round-0 row is emitted at time 1 and included in the slot-1 proposal at time 4.
+It is held before `S.a 0 = 6`. A complete public tick schedule through time 6
+and unforgeability both hold in the checked example
+`scripts/VoteWindowRoundHistory.lean`; strict round history at time 6 would
+incorrectly require `0 < 0`.
+
+Actions can also follow the paper instant: `Δ = 1`, `R = 4`, and
+`act r = 16r + 7` satisfy P1/P2/P3. Here `S.a 0 = 6 < b0 = 7`, yet a
+round-0 attestation is emitted at `b0`. Consequently, a bound on the previous
+paper instant alone does not make post-boundary emissions from previous
+rounds impossible. `scripts/VoteWindowLateBoundary.lean` checks this case
+with every public tick through time 7 and refutes the corresponding vacuous
+base-case claim for an arbitrary candidate prefix. This example does not
+supply the additional premises of an outage regime.
+
 ## 12 Scope of this document
 
 This document covers the current model. It records no history of a choice, and
