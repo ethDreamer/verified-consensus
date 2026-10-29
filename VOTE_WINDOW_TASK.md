@@ -128,6 +128,34 @@ where needed. Any proof you cannot close gets a tracked
 entry in `PROGRESS.md`; drive the count to zero before declaring the stage
 done, or report the irreducible remainder as findings.
 
+*Resolution of the Stage 2 history-contract question (2026-10-29)*: strict
+round history at the paper instant — "honest rows held (in an ancestor)
+before `S.a r` have round `< r`", as in
+`Execution/OutageProvenance.lean:honest_held_ancestor_row_before_action` —
+is a point-schedule artifact: it holds only because every round-`r` action
+occurs simultaneously at `S.a r`. Under the window, concurrent honest
+round-`r` rows legitimately appear in views before that instant; the checked
+`scripts/VoteWindowRoundHistory.lean` example is accepted as establishing
+this. Do NOT shrink the boundary to rescue strictness at the use sites.
+Instead, restate this contract (and any internal contract of the same
+strict-round-before-`S.a` shape) causally: each honest held row of round
+`r′` was emitted at its emitter's `(node v′).act r′`, with the emission
+preceding the hold per the repo's delivery convention, and with P1 bounding
+the emission below by round-`r′` G0 completion. The round conclusion at
+boundary `S.a r` weakens to `≤ r`. Derive two corollaries and use them
+downstream: (a) strictness at any boundary at or before round-`r` G0
+completion, where P1 excludes every round-`r` action; (b) at the point
+instance, the original strict form at `S.a r`, re-derived through the causal
+contract — this recovery is mandatory, as the check that no proof power is
+silently lost. Downstream inductions that relied on strictness use (a) when
+they genuinely need only pre-round-`r` information, and otherwise the causal
+form plus the P2 delivery bound (every round-`r` action arrives before round
+`r+1`'s early cutoff). Record the restatement and the example in
+`docs/MODELING_CHOICES.md`, and handle the diagnostic script per the
+standing diagnostics rule. If a protected statement turns out to genuinely
+require strict round history at `S.a r`, stop and report it as a finding
+rather than weakening anything.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
