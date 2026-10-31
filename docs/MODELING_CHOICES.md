@@ -795,6 +795,20 @@ the support proof. The relative-majority recovery anchor now names
 `windowActionSGBlockAt`; its run scope comes from the actual input's post-tick
 inventory, and its point specialization recovers the former SG-head observer.
 
+The window also changes which proposal first carries an honest row. With
+`Δ = 1`, `R = 3`, and `act r = 12*r + 1`, a round-zero row can be emitted
+at time 1 and accepted in the `+1` proposal at time 4. The fully admissible
+nine-tick run in `scripts/VoteWindowEarlyCarrier.lean` has horizon 8, all
+three relevant proposers honest, and that same row equal to the paper
+observer at time 6. It satisfies every premise of
+`CarrierFirst.noEarlierCarrier_of_roundRows` and refutes its conclusion, which excludes
+any such carrier before the `+2` proposal at time 8. The `+2` proposal has
+no own attestation rows: the earlier row is already on its parent chain,
+so §7's on-chain exclusion removes it from the new payload. This is an
+internal carrier-exclusivity failure, not a demonstrated counterexample to
+the protected consensus theorem. The carrier contract and its own-row
+consumer require a resolution; neither statement has been weakened.
+
 The checked causal constructors are imported by the stable coverage consumer.
 Its remaining legacy producers, action-index histories and the complete
 output assembly are still being migrated; the complete library does not yet
