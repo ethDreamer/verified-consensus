@@ -904,6 +904,26 @@ new Setup or regime requirements. No unconditional coverage producer or
 fourth placeholder has yet been introduced; the consumer migration and its
 build-derived protected-result dependency audit remain unfinished.
 
+The finality-write kernel `namedFinalizedAt_of_actionRows` now reads actual
+action rows throughout. It retains the exact parent checkpoint, positive
+debt and live parent-finality membership requirements; its `_point` theorem
+recovers the entire original paper-row contract. The kernel's imports are
+limited to the proposal and local quorum proofs, so it can be checked
+independently of the unfinished carrier-selection assembly.
+
+The parent-chain arm has a checked transport interface:
+`namedFinalize_mem_of_row_same_justification` enters the signer into the live
+set when the row matches its carrier parent's checkpoint, debt is positive,
+and the carrier preserves that justification.
+`namedFinalize_subset_of_preceq_same_justification` transports a live bit
+along named ancestry at an unchanged justification height. Their composition,
+`namedFinalize_mem_of_ancestor_row_same_justification`, supplies the descendant
+membership needed by the kernel. These are local conditional lemmas: the
+consumer still must derive checkpoint alignment, ancestry and retention from
+its causal contracts, or take an already-justified/finalized branch. No such
+conditions have been added to CarrierCoverage or a regime, and bare historical
+chain membership is not treated as live participation.
+
 `W4FKChainCommonFinalized` currently needs
 common finality by `S.a (r+1)` (time 54 for the displayed round), whereas
 the first later honest proposal's confirmation is at 70. The enclosing

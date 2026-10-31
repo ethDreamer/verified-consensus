@@ -1,9 +1,22 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
-public import DecoupledConsensusProofs.Generic.CanonicalRegimeFromChain
+public import DecoupledConsensusProofs.Protocol.ChainState.ProposalBridge
+public import DecoupledConsensusProofs.Protocol.ChainState.AlignedRoundLemmas
+public import DecoupledConsensusProofs.Protocol.ChainState.FinalityQuorumCore
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowActionPoint
+public import DecoupledConsensusProofs.Protocol.ChainState.W4NamedJustificationMonotone
 public import DecoupledConsensusProofs.Protocol.ChainState.EntryHeight
 public import DecoupledConsensusProofs.Protocol.ChainState.TargetedTimeoutBinding
 
+/-!
+# Finality writes from actual rows and live parent participation
+
+The row fold combines exact own-payload finality pairs with participation
+already live at the parent's checkpoint. Finality bits persist along ancestry
+with unchanged justification; entering a bit requires matching the checkpoint
+at its carrier. The final write uses actual action rows, and the point instance
+recovers the paper-row contract (PROTOCOL.md `alg:state-transition`).
+-/
 @[expose] public section
 
 open DecoupledConsensusModel.Statements.Instantiation
@@ -108,6 +121,124 @@ private theorem w4fwRows_finalize (sigma : ChainState V) (geometry : Block V)
       (rows.foldl (process_attestation_with (TimeoutBinding.targeted V))
         { sigma with s := geometry.slot }).finalize := rfl
 
+/-! ## Live finality bits along a fixed justification -/
+
+/-- Only a new justification can clear finality participation; a progress
+advance and the finality write retain it (PROTOCOL.md `alg:state-transition`). -/
+theorem finalize_subset_of_same_justification
+    (E : Env V) (cfg : HeightConfig) (sigma : ChainState V)
+    (hstrict : sigma.h_j < sigma.h)
+    (hstable : (process_height_events E cfg sigma).h_j = sigma.h_j) :
+    sigma.finalize ⊆ (process_height_events E cfg sigma).finalize := by
+  unfold process_height_events at hstable ⊢
+  split_ifs at hstable ⊢ <;> simp_all [advance_height]
+  all_goals split_ifs at hstable ⊢ <;> simp_all
+
+/-- Along a parent edge with unchanged justification height, all live finality
+bits survive. Chain membership by itself is not used as a finality bit. -/
+theorem namedFinalize_subset_of_parent_same_justification
+    (E : Env V) (cfg : HeightConfig)
+    (parent : NamedBlock V) (s : Slot) (root : BlockId)
+    (votes support : List (GoldfishVote V)) (rows : List (NamedAttestation V))
+    (proposer : V)
+    (hstable : (derive_named E cfg (.node parent s root votes support rows proposer)).h_j =
+      (derive_named E cfg parent).h_j) :
+    (derive_named E cfg parent).finalize ⊆
+      (derive_named E cfg (.node parent s root votes support rows proposer)).finalize := by
+  let B := NamedBlock.node parent s root votes support rows proposer
+  let folded := fold_rows (TimeoutBinding.targeted V) (derive_named E cfg parent)
+    B.erase rows
+  have hf := NamedDerivationGeometry.fold_context_fields
+    (TimeoutBinding.targeted V) rows
+    { derive_named E cfg parent with s := B.erase.slot }
+  have hstrict : folded.h_j < folded.h := by
+    change (fold_rows _ _ _ _).h_j < (fold_rows _ _ _ _).h
+    rw [w4fwRows_h_j]
+    exact hf.2.1 ▸ (NamedDerivationGeometry.chainOrder_derive_named E cfg
+      parent).justified_below_height
+  have hs : (process_height_events E cfg folded).h_j = folded.h_j := by
+    rw [show folded.h_j = (derive_named E cfg parent).h_j from w4fwRows_h_j ..]
+    exact hstable
+  exact Finset.Subset.trans
+    (w4fwFold_finalize_subset rows { derive_named E cfg parent with s := B.erase.slot })
+    (finalize_subset_of_same_justification E cfg folded hstrict hs)
+
+/-- Along a named chain, a live finality bit persists while the justification
+height remains fixed (PROTOCOL.md `alg:state-transition`). -/
+theorem namedFinalize_subset_of_preceq_same_justification
+    (E : Env V) (cfg : HeightConfig) {A B : NamedBlock V}
+    (hAB : NamedBlock.Preceq A B)
+    (hstable : (derive_named E cfg B).h_j = (derive_named E cfg A).h_j) :
+    (derive_named E cfg A).finalize ⊆ (derive_named E cfg B).finalize := by
+  induction B with
+  | genesis =>
+      simp only [NamedBlock.Preceq, NamedBlock.preceq, decide_eq_true_eq] at hAB
+      subst A
+      exact Finset.Subset.refl _
+  | node p s root votes support rows proposer ih =>
+      simp only [NamedBlock.Preceq, NamedBlock.preceq, Bool.or_eq_true,
+        decide_eq_true_eq] at hAB
+      rcases hAB with rfl | hAp
+      · exact Finset.Subset.refl _
+      · have hparent := namedJustification_le_of_preceq E cfg hAp
+        have hedge := namedJustification_strict_or_eq_of_parent E cfg p s root
+          votes support rows proposer
+        have hle : (derive_named E cfg p).h_j ≤
+            (derive_named E cfg (.node p s root votes support rows proposer)).h_j :=
+          hedge.elim Nat.le_of_lt (fun h => h.1.le)
+        have hpEq : (derive_named E cfg p).h_j = (derive_named E cfg A).h_j :=
+          Nat.le_antisymm (hle.trans_eq hstable) hparent
+        exact Finset.Subset.trans (ih hAp hpEq)
+          (namedFinalize_subset_of_parent_same_justification E cfg p s root
+            votes support rows proposer (hstable.trans hpEq.symm))
+
+/-- A carried row enters the live finality set when it matches the carrier
+parent's checkpoint and that justification is retained by the child.
+This is the entry condition needed before ancestry can transport its bit. -/
+theorem namedFinalize_mem_of_row_same_justification
+    (E : Env V) (cfg : HeightConfig) {B : NamedBlock V} {a : NamedAttestation V}
+    (ha : a ∈ B.attestations)
+    (hdebt : (derive_named E cfg B.parent).h_F < (derive_named E cfg B.parent).h_j)
+    (hpair : a.finality_pair = some
+      ⟨(derive_named E cfg B.parent).h_j, (derive_named E cfg B.parent).J.root⟩)
+    (hstable : (derive_named E cfg B).h_j = (derive_named E cfg B.parent).h_j) :
+    a.val_index ∈ (derive_named E cfg B).finalize := by
+  cases B with
+  | genesis => exact False.elim (List.not_mem_nil ha)
+  | node p s root votes support rows proposer =>
+      let B := NamedBlock.node p s root votes support rows proposer
+      let folded := fold_rows (TimeoutBinding.targeted V) (derive_named E cfg p)
+        B.erase rows
+      have hf := NamedDerivationGeometry.fold_context_fields
+        (TimeoutBinding.targeted V) rows
+        { derive_named E cfg p with s := B.erase.slot }
+      have hstrict : folded.h_j < folded.h := by
+        change (fold_rows _ _ _ _).h_j < (fold_rows _ _ _ _).h
+        rw [w4fwRows_h_j]
+        exact hf.2.1 ▸ (NamedDerivationGeometry.chainOrder_derive_named E cfg
+          p).justified_below_height
+      have hs : (process_height_events E cfg folded).h_j = folded.h_j := by
+        rw [show folded.h_j = (derive_named E cfg p).h_j from w4fwRows_h_j ..]
+        exact hstable
+      apply finalize_subset_of_same_justification E cfg folded hstrict hs
+      exact w4fwFold_mem_finalize_of_finality rows
+        { derive_named E cfg p with s := B.erase.slot } ha hdebt hpair
+
+/-- A row processed at a live checkpoint remains a live finality contribution
+on a descendant with the same justification. The checkpoint conditions are
+explicit; membership somewhere on the chain alone does not discharge them. -/
+theorem namedFinalize_mem_of_ancestor_row_same_justification
+    (E : Env V) (cfg : HeightConfig) {A B : NamedBlock V} {a : NamedAttestation V}
+    (hAB : NamedBlock.Preceq A B) (ha : a ∈ A.attestations)
+    (hdebt : (derive_named E cfg A.parent).h_F < (derive_named E cfg A.parent).h_j)
+    (hpair : a.finality_pair = some
+      ⟨(derive_named E cfg A.parent).h_j, (derive_named E cfg A.parent).J.root⟩)
+    (hentry : (derive_named E cfg A).h_j = (derive_named E cfg A.parent).h_j)
+    (hstable : (derive_named E cfg B).h_j = (derive_named E cfg A).h_j) :
+    a.val_index ∈ (derive_named E cfg B).finalize :=
+  namedFinalize_subset_of_preceq_same_justification E cfg hAB hstable
+    (namedFinalize_mem_of_row_same_justification E cfg ha hdebt hpair hentry)
+
 /-! ## 2. Named finality coverage -/
 
 /-- Named twin of `FinalityQuorumCoveredByChild` (`FinalityQuorumCore.lean:185`):
@@ -202,18 +333,17 @@ theorem namedFinalizedAt_of_finalityQuorumCoveredByChild
 
 /-! ## 3. Exact honest action rows perform the write -/
 
-/-- Named twin of `finalizedAt_of_actionRows` (`RecurringFinalityRun.lean:904`):
-a selected proposal performs the exact named finality write once every honest
-first-action row is live in its parent or carried in its own rows. The coverage
-premise is verbatim the `secondRowsCoveredAtPlusTwo` field of
-`RecurringFinalityPhaseAt` (`RecurringFinalityRun.lean:149-153`). -/
+/-- A selected proposal performs the exact finality write once every honest
+actual round row is live in its parent or carried in its own payload.
+Parent-chain membership retains the live finality-bit condition
+(PROTOCOL.md `process_attestation`, `process_height_events`). -/
 theorem namedFinalizedAt_of_actionRows
     (S : Setup V) {rho : Run V} (hbot : BelowOneThird S rho.honest)
     {r : Round} {s : Slot} {hJ : Height} {TJ : BlockId} {J : Block V}
     {B : NamedBlock V}
     (hB : proposedBlockAt S rho s = some B)
     (hcoverage : ∀ v ∈ rho.honest,
-      let a := actionAttestationAt S rho v r
+      let a := NamedActionReads.windowActionAttestationAt S rho v r
       (a ∈ Protocol.named_chain_attestations B.parent ∧
           v ∈ (derive_named S.E S.cfg B.parent).finalize) ∨
         a ∈ B.attestations)
@@ -222,7 +352,7 @@ theorem namedFinalizedAt_of_actionRows
     (hroot : J.root = TJ)
     (hdebt : (derive_named S.E S.cfg B.parent).h_F < hJ)
     (hfinality : ∀ v ∈ rho.honest,
-      (actionAttestationAt S rho v r).finality_pair = some ⟨hJ, TJ⟩) :
+      (NamedActionReads.windowActionAttestationAt S rho v r).finality_pair = some ⟨hJ, TJ⟩) :
     NamedFinalizedAt S.E S.cfg B J hJ := by
   have hne : B ≠ NamedBlock.genesis := by
     obtain ⟨p, hp, -⟩ := proposedBlockAt_parent S rho s hB
@@ -236,14 +366,49 @@ theorem namedFinalizedAt_of_actionRows
   dsimp only at hcovered
   rcases hcovered with hparent | hchild
   · exact Or.inl hparent.2
-  · refine Or.inr ⟨actionAttestationAt S rho v r, hchild,
-      (actionAttestationAt_shape S rho v r).1, ?_⟩
+  · refine Or.inr ⟨NamedActionReads.windowActionAttestationAt S rho v r, hchild,
+      S.node_val_index v, ?_⟩
     rw [hfinality v hv, hroot]
 
+/-- The point instance recovers the original paper-row finality-write contract
+without changing its checkpoint, debt or live-accumulator premises. -/
+theorem namedFinalizedAt_of_actionRows_point
+    (S : Setup V) {rho : Run V}
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (hbot : BelowOneThird S rho.honest)
+    {r : Round} {s : Slot} {hJ : Height} {TJ : BlockId} {J : Block V}
+    {B : NamedBlock V}
+    (hB : proposedBlockAt S rho s = some B)
+    (hcoverage : ∀ v ∈ rho.honest,
+      let a := actionAttestationAt S rho v r
+      (a ∈ Protocol.named_chain_attestations B.parent ∧
+          v ∈ (derive_named S.E S.cfg B.parent).finalize) ∨ a ∈ B.attestations)
+    (hparentHJ : (derive_named S.E S.cfg B.parent).h_j = hJ)
+    (hparentJ : (derive_named S.E S.cfg B.parent).J = J)
+    (hroot : J.root = TJ)
+    (hdebt : (derive_named S.E S.cfg B.parent).h_F < hJ)
+    (hfinality : ∀ v ∈ rho.honest,
+      (actionAttestationAt S rho v r).finality_pair = some ⟨hJ, TJ⟩) :
+    NamedFinalizedAt S.E S.cfg B J hJ := by
+  refine namedFinalizedAt_of_actionRows S hbot (r := r) hB ?_
+    hparentHJ hparentJ hroot hdebt ?_
+  · intro v hv
+    simpa only [WindowAction.windowActionAttestationAt_point S rho v r (hpoint v r)]
+      using hcoverage v hv
+  · intro v hv
+    simpa only [WindowAction.windowActionAttestationAt_point S rho v r (hpoint v r)]
+      using hfinality v hv
+
 #print axioms namedFinalityQuorumCoveredByChild_of_honest
+#print axioms finalize_subset_of_same_justification
+#print axioms namedFinalize_subset_of_parent_same_justification
+#print axioms namedFinalize_subset_of_preceq_same_justification
+#print axioms namedFinalize_mem_of_row_same_justification
+#print axioms namedFinalize_mem_of_ancestor_row_same_justification
 #print axioms namedFinalityReady_of_covered
 #print axioms namedFinalizedAt_of_finalityQuorumCoveredByChild
 #print axioms namedFinalizedAt_of_actionRows
+#print axioms namedFinalizedAt_of_actionRows_point
 
 end HealingSurface
 end Proofs
