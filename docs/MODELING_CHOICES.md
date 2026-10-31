@@ -884,8 +884,27 @@ triple; shifting to the next round's triple is not justified by recurrence.
 
 This is a counterexample to the proposed schedule-level honesty discharge,
 not an admissible-run or finality counterexample: the example's event list
-is empty and no execution validity is asserted. It leaves the consumer
-selection question unresolved. `W4FKChainCommonFinalized` currently needs
+is empty and no execution validity is asserted. The internal
+`Proofs.HealingSurface.CarrierCoverage` interface isolates the required
+carriage from the pool-delivery deadline. For each honest validator it gives
+a proposal slot and body, proposer honesty, the unchanged admission-window
+check, a proposal time within the horizon, and chain-or-own membership of
+`windowActionAttestationAt`. It is proof-side vocabulary; Setup and the
+regime bundles have no additional premise. The interface does not stipulate
+a common carrier slot, a +2 deadline, or live accumulator membership.
+
+`Execution/CarrierCoverage.lean` proves the interface for the carrier-bounded
+window `act v q + Δ ≤ proposal_time (opening_slot q + 2)`, under the existing
+admissibility, triple, GST and horizon premises. The point schedule and
+`R = 3` discharge that bound explicitly; the latter also reuses the checked
+deadline-coverage producer. `carrierCoverage_point_own_rows` retains the
+original own-payload conclusion, with the actual observer rewritten through
+the checked point-read equality. These are conditional instance proofs, not
+new Setup or regime requirements. No unconditional coverage producer or
+fourth placeholder has yet been introduced; the consumer migration and its
+build-derived protected-result dependency audit remain unfinished.
+
+`W4FKChainCommonFinalized` currently needs
 common finality by `S.a (r+1)` (time 54 for the displayed round), whereas
 the first later honest proposal's confirmation is at 70. The enclosing
 phase bound is `4 * progressLag' gap extra + 4 * gap + 7` rounds within the
