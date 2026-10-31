@@ -292,6 +292,37 @@ strictly earlier — that is, the adversary alone can raise `h_max` past the
 band — stop and report it as a finding: that would be a quorum-model
 discovery about the FG, not plumbing, and it must not be papered over.
 
+*Resolution of the early-carrier exclusivity question (2026-10-31)*: your
+`VoteWindowEarlyCarrier` counterexample is accepted —
+`noEarlierCarrier_of_roundRows` is false under the window, and the answer
+to your question is yes. Carrier exclusivity was a simultaneity artifact:
+under the point schedule a round row is born too late for any proposal
+before the +2 proposal, so "no earlier carrier" and "carried on the +2
+chain" coincided, and the contract recorded the accidentally stronger
+form. Under the window an earlier emission makes an earlier carrier
+possible, and the protocol's own on-chain exclusion rule then *correctly*
+omits the row from the +2 payload. That rule also supplies the right
+replacement contract as an exact dichotomy: at the +2 proposal, either the
+resolved round row already lies on the proposer's chain (an earlier
+carrier it extends), or it does not and the exclusion rule does not fire,
+so the proposal carries its own copy. Replace
+`noEarlierCarrier_of_roundRows` and its
+`plusTwoProposal_carries_resolvedRoundRow` consumer with this chain-or-own
+coverage, consuming the existing `plusTwoProposal_covers_resolvedRoundRow`
+interface where its hypotheses hold. Do not modify the exclusion rule
+itself, and do not add any premise forbidding early carriage — early
+carriage is the protocol performing better, not a fault. Downstream
+consumers take coverage, not own-payload carriage; if any consumer
+genuinely requires the row in the +2 payload itself and cannot be
+discharged from chain coverage, stop and report it as a finding rather
+than strengthening a premise — that would mean a reader depends on *where*
+on the chain a row sits, which no consensus property may do. At the point
+instance, prove that no earlier carrier exists and recover the original
+own-row contract as an explicit specialization; check this explicitly.
+Before Stage 2 is declared complete, promote the fact checked by
+`scripts/VoteWindowEarlyCarrier.lean` into a properly-homed lemma or
+delete the script, per the diagnostic ground rule.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
