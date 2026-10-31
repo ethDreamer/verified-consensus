@@ -942,6 +942,23 @@ still supplies the actual emission event, held anchor, ancestry, matching
 height pair and plateau. These are local proof obligations, not additions to
 CarrierCoverage, and their discharge in the first-half assembly is pending.
 
+The finality bridge now derives intermediate carrier alignment rather than
+asking for it separately. `namedFinalize_mem_of_suffix_same_justification`
+starts from an anchor whose chain does not yet contain the row. Justification
+monotonicity and equal endpoint heights identify the checkpoint throughout
+the suffix; finalized-height monotonicity transports positive debt backwards.
+Consequently the matching row enters the finality set at its carrier and
+survives to the proposal parent.
+`WindowCarrierFinality.emittedAttestation_finalityCoverage_of_anchor` supplies
+the anchor's row exclusion from strict causal history, including same-tick
+proposals. `namedFinalizedAt_of_actionRows_at_emissionAnchors` feeds these live
+bits and the actual own-payload rows to the checked finality-write kernel.
+Its callers still must establish ancestry from the actual held anchor to the
+chosen parent and equality of their justification heights, or use an
+already-finalized branch; this does not identify an actual head with the
+paper-time +1 head. The carrier-selection assembly and its protected-result
+reachability audit remain unfinished.
+
 `W4FKChainCommonFinalized` currently needs
 common finality by `S.a (r+1)` (time 54 for the displayed round), whereas
 the first later honest proposal's confirmation is at 70. The enclosing

@@ -241,6 +241,77 @@ theorem namedFinalize_mem_of_ancestor_row_same_justification
 
 /-! ## 2. Named finality coverage -/
 
+/-- A named child cannot lower its parent's finalized height
+(PROTOCOL.md `process_height_events`). -/
+theorem namedFinalizedHeight_le_of_parent
+    (E : Env V) (cfg : HeightConfig) (B : NamedBlock V) :
+    (derive_named E cfg B.parent).h_F ≤ (derive_named E cfg B).h_F := by
+  cases B with
+  | genesis => exact le_rfl
+  | node p s root votes support rows proposer =>
+      let B := NamedBlock.node p s root votes support rows proposer
+      let folded := fold_rows (TimeoutBinding.targeted V) (derive_named E cfg p)
+        B.erase rows
+      have hf : folded.h_F ≤ (afterFin E folded).h_F := by
+        unfold afterFin
+        split_ifs with h
+        · simp only [finalityReady, Bool.and_eq_true, decide_eq_true_eq] at h
+          exact h.1.le
+        · exact le_rfl
+      have hfold : folded.h_F = (derive_named E cfg p).h_F := w4fwRows_h_F ..
+      change (derive_named E cfg p).h_F ≤ (process_height_events E cfg folded).h_F
+      rw [← hfold, process_height_events_eq]
+      split_ifs <;> simpa only [advance_height] using hf
+
+/-- A row carried after an emission anchor enters the finality set if the
+suffix keeps that anchor's live justification. Matching at its individual
+carrier follows from monotonicity on the suffix; it is not a separate
+assumption (PROTOCOL.md `process_attestation`). -/
+theorem namedFinalize_mem_of_suffix_same_justification
+    (E : Env V) (cfg : HeightConfig) {C P : NamedBlock V} {a : NamedAttestation V}
+    (hCP : NamedBlock.Preceq C P)
+    (haP : a ∈ Protocol.named_chain_attestations P)
+    (haC : a ∉ Protocol.named_chain_attestations C)
+    (hstable : (derive_named E cfg P).h_j = (derive_named E cfg C).h_j)
+    (hdebt : (derive_named E cfg P).h_F < (derive_named E cfg P).h_j)
+    (hpair : a.finality_pair = some
+      ⟨(derive_named E cfg C).h_j, (derive_named E cfg C).J.root⟩) :
+    a.val_index ∈ (derive_named E cfg P).finalize := by
+  induction P with
+  | genesis => simp [Protocol.named_chain_attestations] at haP
+  | node p s root votes support rows proposer ih =>
+      simp only [NamedBlock.Preceq, NamedBlock.preceq, Bool.or_eq_true,
+        decide_eq_true_eq] at hCP
+      rcases hCP with rfl | hCp
+      · exact False.elim (haC haP)
+      · have hpNode : NamedBlock.Preceq p (.node p s root votes support rows proposer) :=
+          Proofs.NamedAncestry.named_extend s root votes support rows proposer
+            (Proofs.NamedAncestry.named_self p)
+        have hpHeight : (derive_named E cfg p).h_j = (derive_named E cfg C).h_j :=
+          Nat.le_antisymm
+            ((namedJustification_le_of_preceq E cfg hpNode).trans_eq hstable)
+            (namedJustification_le_of_preceq E cfg hCp)
+        have hnodeHeight : (derive_named E cfg
+            (.node p s root votes support rows proposer)).h_j =
+              (derive_named E cfg p).h_j := hstable.trans hpHeight.symm
+        have hpDebt : (derive_named E cfg p).h_F < (derive_named E cfg p).h_j := by
+          have hmono := namedFinalizedHeight_le_of_parent E cfg
+            (.node p s root votes support rows proposer)
+          exact (hmono.trans_lt hdebt).trans_eq hnodeHeight
+        have hpJ : (derive_named E cfg p).J = (derive_named E cfg C).J := by
+          rcases namedJustification_strict_or_eq_of_preceq E cfg hCp with hlt | heq
+          · exact False.elim ((Nat.ne_of_lt hlt) hpHeight.symm)
+          · exact heq.2.symm
+        simp only [Protocol.named_chain_attestations, Finset.mem_union] at haP
+        rcases haP with haParent | haOwn
+        · exact namedFinalize_subset_of_parent_same_justification E cfg
+            p s root votes support rows proposer hnodeHeight
+            (ih hCp haParent hpHeight hpDebt)
+        · apply namedFinalize_mem_of_row_same_justification E cfg
+            (B := .node p s root votes support rows proposer)
+            (List.mem_toFinset.mp haOwn) hpDebt ?_ hnodeHeight
+          simpa only [NamedBlock.parent, hpHeight, hpJ] using hpair
+
 /-- Named twin of `FinalityQuorumCoveredByChild` (`FinalityQuorumCore.lean:185`):
 the checkpoint is named explicitly, and each quorum member is already in the
 parent's finality set or carries an exact row for that same checkpoint among
@@ -409,6 +480,8 @@ theorem namedFinalizedAt_of_actionRows_point
 #print axioms namedFinalizedAt_of_finalityQuorumCoveredByChild
 #print axioms namedFinalizedAt_of_actionRows
 #print axioms namedFinalizedAt_of_actionRows_point
+#print axioms namedFinalizedHeight_le_of_parent
+#print axioms namedFinalize_mem_of_suffix_same_justification
 
 end HealingSurface
 end Proofs

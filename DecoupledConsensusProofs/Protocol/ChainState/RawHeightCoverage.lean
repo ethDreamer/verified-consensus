@@ -835,7 +835,9 @@ private theorem namedTarget_mem_of_suffix_same_height
               (List.mem_toFinset.mp haOwn) hpairParent hnodeHeight
 
 omit [Fintype V] in
-private theorem chainRows_iff_named_chain
+/-- List-based proposal coverage and set-based transition coverage have the
+same row membership (PROTOCOL.md `proposal_attestations`). -/
+theorem chainRows_iff_named_chain
     {B : NamedBlock V} {a : NamedAttestation V} :
     a ∈ Protocol.NamedProposalRows.chainRows B ↔
       a ∈ Protocol.named_chain_attestations B := by
