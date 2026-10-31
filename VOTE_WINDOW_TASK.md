@@ -323,6 +323,39 @@ Before Stage 2 is declared complete, promote the fact checked by
 `scripts/VoteWindowEarlyCarrier.lean` into a properly-homed lemma or
 delete the script, per the diagnostic ground rule.
 
+*Resolution of the late-carrier availability question (2026-10-31)*: your
+`VoteWindowLateCarrier` counterexample is accepted —
+`actionAttestationAt_mem_selectedRows_at_plusTwo` is false under the
+window. It is the mirror of the early-carrier artifact: under the point
+schedule every round-`r` row arrives by `a_r + Δ`, so "available at the +2
+proposal" and "available after every arrival" coincided, and the contract
+recorded the accidentally stronger anchor. The window's true availability
+deadline is the one P2 already states: every honest round-`r` action
+arrives strictly before round `r+1`'s grade-2 early cutoff
+`T_{r+1} − 5Δ`, by P2 plus the strict delivery bound and nothing else.
+Replace the unconditional +2 availability producer with an
+availability-at-deadline producer: under the current producer's own
+honest-proposer, `ProposerCarrierAt`, GST and admissibility premises, any
+proposal at or after `T_{r+1} − 5Δ` satisfies chain-or-own coverage of
+every resolved round-`r` row, through the accepted early-carrier
+dichotomy. Re-anchor `carrierPlusTwoCarriesRoundRows_named`,
+`W4CarrierFinalityField`, `W4FKChainCommonFinalized` and their dependents
+from the +2 proposal to the first admissible proposal at or after that
+cutoff, keeping their live-accumulator conditions as resolved previously.
+Do NOT strengthen P2 to force actions by +2 — a schedule acting late in
+its window is exactly what this exercise admits — and do not add any
+delivery premise: where a consumer runs across an outage, the existing
+straggler resolutions govern. The protected healing bounds are stated in
+the `(2 + e)R` round family and must absorb this intra-round re-anchoring;
+if some protected bound genuinely cannot absorb a carrier shift bounded by
+the round length, stop and report it as a finding — that would mean the
+window costs real healing latency, which is a discovery to record, not to
+paper over. At the point instance, P2 gives `a_r + Δ ≤ T_{r+1} − 5Δ`, so
+every arrival completes before the original +2 proposal and the +2
+producer is recovered as an explicit specialization; check this
+explicitly. `scripts/VoteWindowLateCarrier.lean` falls under the same
+promotion-or-deletion rule as the early-carrier diagnostic.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
