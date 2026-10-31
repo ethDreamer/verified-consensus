@@ -65,8 +65,8 @@ theorem jointHistoryIdx_step_action
     (hcapn : ∀ i, i < n → ∀ e : NamedEvent V,
       rho.events[i]? = some e → e.time ≤ cap)
     (v : V) (r : Round) (hv : v ∈ rho.honest)
-    (hn : rho.events[n]? = some (.tick v (S.a r)))
-    (hta : S.a r ≤ cap) :
+    (hn : rho.events[n]? = some (.tick v ((S.node v).act r)))
+    (hta : (S.node v).act r ≤ cap) :
     ∃ C' : NamedBlock V, NamedRun.blockInRun S rho C' ∧
       NamedBlock.Preceq C C' ∧ LayerAJointHistoryIdxEmitted S rho (n + 1) C' := by
   obtain ⟨C'', L, hC''run, hCC'', hchoice, hLrun, hLbody, hLe, hLC''⟩ :=
@@ -83,11 +83,14 @@ theorem jointHistoryIdx_step_action
   have hconf4'' : JointHistoryGaps.ConfirmationAtTick S rho n C'' := by
     intro u r' hu hi
     obtain ⟨rfl, hr'⟩ := tick_eq hn hi
-    have hrr : r' = r := JointHistoryGapsTime.setup_a_injective S hr'.symm
+    have hrr : r' = r := by
+      have h := S.act_round v r'
+      rw [← hr', S.act_round] at h
+      exact h.symm
     subst hrr
     exact ⟨L, hLrun, hLbody, hLe, hLC''⟩
   by_cases hemit : NamedRun.emits S rho v
-      (Object.attest (Proofs.HealingSurface.actionAttestationAt S rho v r)) (S.a r)
+      (Object.attest (NamedActionReads.windowActionAttestationAt S rho v r)) ((S.node v).act r)
   · obtain ⟨K0, hK0run, hK0body, hK0e, hK0C⟩ :=
       SGVoteOnHistory.sg_vote_on_history S rho cap core healthy committees hR
         hcap windows hbad n C'' hhist'' hcapn n v r hv hn (le_refl n) hconf4''
@@ -110,13 +113,13 @@ theorem jointHistoryIdx_step_action
       committees hR hcap windows hbad n C' hhist' hcapn
     obtain ⟨⟨hC'run', h1, h2, h3⟩, h0, h4, hprovWeak⟩ := hhist'
     have hhistA : LayerAHistoryIdx S rho n C' := ⟨hC'run', h1, h2, h3⟩
-    have hc1 : IdxDriverSteps.Clause1Idx S rho (n + 1) C' := by
+    have hc1 : NamedWindowHistoryFields.Clause1Idx S rho (n + 1) C' := by
       intro i u ta' a hu hi hem hlt fp hfp
       rcases (by omega : i < n ∨ i = n) with hlt' | rfl
       · exact h1 i u ta' a hu hi hem hlt' fp hfp
       · obtain ⟨rfl, rfl⟩ := tick_eq hn hi
-        exact IdxDriverSteps.clause1_at_action_tick S rho core hbad i C' hhistA
-          v hv (S.a r) hi a hem fp hfp
+        exact NamedWindowHistoryFields.clause1_at_action_tick S rho core hbad i C' hhistA
+          v hv ((S.node v).act r) hi a hem fp hfp
     refine ⟨C', hC'run, named_preceq_trans hCC'' hC''C', ?_⟩
     refine ⟨?_, provenance_mono S rho hprovC' (Nat.le_succ _)⟩
     refine ⟨⟨hC'run', hc1, ?_, IdxDriverSteps.clause3_of_clause1
@@ -128,7 +131,7 @@ theorem jointHistoryIdx_step_action
       · exact h2 i u ta' a hu hi hem hlt' h T timeout hp
       · obtain ⟨rfl, rfl⟩ := tick_eq hn hi
         exact IdxDriverSteps.clause2_at_action_tick S rho core i C' hgraded
-          hconf4' v hv (S.a r) hi a hem h T timeout hp
+          hconf4' v hv ((S.node v).act r) hi a hem h T timeout hp
     · intro i u ta' a hu hi hem hlt key hkey
       rcases (by omega : i < n ∨ i = n) with hlt' | rfl
       · exact h0 i u ta' a hu hi hem hlt' key hkey
@@ -144,12 +147,12 @@ theorem jointHistoryIdx_step_action
         (hi : rho.events[n]? = some (.tick u ta))
         (hem : NamedObject.attest a ∈ NamedRun.emittedAt S rho n u ta) : False := by
       obtain ⟨rfl, rfl⟩ := tick_eq hn hi
-      have ha : NamedRun.emits S rho v (.attest a) (S.a r) := ⟨n, hn, hem⟩
-      have hshape := (NamedActionSources.action_run_emission S rho
+      have ha : NamedRun.emits S rho v (.attest a) ((S.node v).act r) := ⟨n, hn, hem⟩
+      have hshape := (WindowAction.run_emission_iff S rho
         core.toNamedScheduleWellFormed v r a).mp ha
       apply hemit
       simpa only [hshape.2.2] using ha
-    have hc1 : IdxDriverSteps.Clause1Idx S rho (n + 1) C'' := by
+    have hc1 : NamedWindowHistoryFields.Clause1Idx S rho (n + 1) C'' := by
       intro i u ta' a hu hi hem hlt fp hfp
       rcases (by omega : i < n ∨ i = n) with hlt' | rfl
       · exact h1 i u ta' a hu hi hem hlt' fp hfp
@@ -174,6 +177,35 @@ theorem jointHistoryIdx_step_action
       · exact hconf4'' u r' hu hi
 
 #print axioms jointHistoryIdx_step_action
+
+/-- The point instance recovers the renewal at the paper tick, with the
+same history conclusion (PROTOCOL.md `sec:healing-schedule`). -/
+theorem jointHistoryIdx_step_action_point
+    (S : Setup V) (rho : NamedRun V) (cap : Time)
+    (core : NamedAdmissibleCore S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (healthy : NamedHealthyPrefixDelivery S rho cap)
+    (committees : HonestCommittees S rho.honest) (hR : 3 ≤ S.hc.R)
+    (hcap : cap ≤ rho.horizon)
+    (windows : ∀ k, 0 < k → domain S.E S.hc k .g2 ≤ cap →
+      AwakeWindowMajority S.E (fun v => (S.node v).awake)
+        rho.honest S.hc.η_SG k)
+    (hbad : S.E.electorate.weightOf (Finset.univ \ rho.honest) < S.E.q)
+    (hconf : NamedConfirmationIdxQueryEmitted S rho cap)
+    (n : Nat) (C : NamedBlock V)
+    (hhist : LayerAJointHistoryIdxEmitted S rho n C)
+    (hcapn : ∀ i, i < n → ∀ e : NamedEvent V,
+      rho.events[i]? = some e → e.time ≤ cap)
+    (v : V) (r : Round) (hv : v ∈ rho.honest)
+    (hn : rho.events[n]? = some (.tick v (S.a r)))
+    (hta : S.a r ≤ cap) :
+    ∃ C' : NamedBlock V, NamedRun.blockInRun S rho C' ∧
+      NamedBlock.Preceq C C' ∧ LayerAJointHistoryIdxEmitted S rho (n + 1) C' := by
+  exact jointHistoryIdx_step_action S rho cap core healthy committees hR hcap windows hbad
+    hconf n C hhist hcapn v r hv (by simpa only [hpoint] using hn)
+    (by simpa only [hpoint] using hta)
+
+#print axioms jointHistoryIdx_step_action_point
 
 theorem layerA_joint_history_idx_emitted
     (S : Setup V) (rho : NamedRun V) (cap : Time)
@@ -217,7 +249,7 @@ theorem layerA_joint_history_idx_emitted
               have htt : tt ≤ cap := by
                 simpa only [NamedEvent.time] using
                   IdxDriverHelpers.time_le_of_lt_boundaryIdx rho core.sorted hev hnb
-              by_cases hact : u ∈ rho.honest ∧ ∃ r : Round, tt = S.a r
+              by_cases hact : u ∈ rho.honest ∧ ∃ r : Round, tt = (S.node u).act r
               · obtain ⟨hu, r, rfl⟩ := hact
                 obtain ⟨C', hC'run, hCC', hC'⟩ :=
                   jointHistoryIdx_step_action S rho cap core healthy committees

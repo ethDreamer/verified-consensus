@@ -104,6 +104,38 @@ theorem tick_store_at_action (S : Setup V) (v : V) (before : NamedNodeState V)
   simp only [windowActionReadFrom, windowReadFrom] at hround ⊢
   simp only [hround, hawake, and_self, ite_true]
 
+/-- A sleeping action tick ends at its pre-attestation input
+(PROTOCOL.md `sec:public-handlers`). -/
+theorem tick_store_at_sleeping_action (S : Setup V) (v : V) (before : NamedNodeState V)
+    (r : Round) (hasleep : (S.node v).awake r ≠ true) :
+    (Execution.NamedNode.tick S v before ((S.node v).act r)).1.st =
+      (windowActionReadFrom S v before r).st := by
+  have hround := actionRead_round S v before r
+  change (Protocol.NamedTick.tick
+    (NamedProfile.gradeContract (preparedCache S before ((S.node v).act r)))
+    S.E S.hc S.cfg (S.node v) before.st before.record ((S.node v).act r)).1 = _
+  rw [NamedTick.tick_computed_duties]
+  simp only [windowActionReadFrom, windowReadFrom] at hround ⊢
+  simp only [hround, hasleep, Bool.false_eq_true, and_false, ite_false]
+
+/-- The actual action tick preserves the input's retained bodies and checkpoints,
+whether the validator emits or sleeps (PROTOCOL.md `sec:public-handlers`). -/
+theorem tick_input_projection (S : Setup V) (v : V) (before : NamedNodeState V)
+    (r : Round) :
+    let input := windowActionReadFrom S v before r
+    let post := (Execution.NamedNode.tick S v before ((S.node v).act r)).1
+    post.st.bodies = input.st.bodies ∧ post.st.core.J = input.st.core.J ∧
+      post.st.core.F = input.st.core.F := by
+  dsimp only
+  by_cases hawake : (S.node v).awake r = true
+  · rw [tick_store_at_action S v before r hawake]
+    dsimp only [NamedDuties.attest_with, NamedAdmission.admit_row, on_sg_vote]
+    split_ifs <;> exact ⟨rfl, rfl, rfl⟩
+  · rw [tick_store_at_sleeping_action S v before r hawake]
+    exact ⟨rfl, rfl, rfl⟩
+
+#print axioms tick_input_projection
+
 omit [DecidableEq V] [Fintype V] in
 private theorem no_attest_proposal (p : Prop) [Decidable p]
     (body : Option (NamedBlock V)) (row : NamedAttestation V) :

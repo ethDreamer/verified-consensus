@@ -12,7 +12,7 @@ public import DecoupledConsensusProofs.Protocol.Schedule.WindowActionPoint
 Emission clauses read actual action inputs and range over tick indices
 strictly before the boundary. Finalized prefixes range through the boundary.
 The point-recovery lemmas specialize every emission field to the paper clock.
-Confirmation and witness provenance still name their explicit paper reads
+Confirmation and witness provenance name actual action inputs
 (PROTOCOL.md `sec:healing-schedule`).
 -/
 
@@ -141,14 +141,16 @@ theorem sgVoteIdx_point (S : Setup V) (rho : NamedRun V) (n : Nat)
 #print axioms layerAHistoryIdx_point
 #print axioms sgVoteIdx_point
 
+/-- Confirmation at actual action inputs lies below the history witness
+(PROTOCOL.md `sec:healing-schedule`). -/
 def ConfirmationIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
     (C : NamedBlock V) : Prop :=
   ∀ (i : Nat) (v : V) (r : Round), v ∈ rho.honest →
-    rho.events[i]? = some (.tick v (S.a r)) → i < n →
+    rho.events[i]? = some (.tick v ((S.node v).act r)) → i < n →
     ∃ L : NamedBlock V,
       NamedRun.blockInRun S rho L ∧
-      L ∈ (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.bodies ∧
-      L.erase = (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.core.live_confirmed ∧
+      L ∈ (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.bodies ∧
+      L.erase = (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.live_confirmed ∧
       NamedBlock.Preceq L C
 
 /-! ## Provenance of a renewal witness -/
@@ -161,6 +163,40 @@ def WitnessProvenanceIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
     (C : NamedBlock V) : Prop :=
   C = .genesis ∨
     ∃ (i : Nat) (v : V) (r : Round), i ≤ n ∧ v ∈ rho.honest ∧
+      rho.events[i]? = some (.tick v ((S.node v).act r)) ∧
+      C ∈ (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.bodies ∧
+      (C.erase = (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.live_confirmed ∨
+        C.erase = Protocol.get_sg_vote_with
+          (NamedProfile.gradeContract
+            (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).cache)
+          S.E S.hc (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.toHealing r
+          (Protocol.grade2_block_with
+            (NamedProfile.gradeContract
+              (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).cache)
+            S.E S.hc (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.toHealing r))
+
+/-- The point schedule recovers the original ConfirmationIdx contract
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem confirmationIdx_point (S : Setup V) (rho : NamedRun V)
+    (n : Nat) (C : NamedBlock V) (hpoint : ∀ v r, (S.node v).act r = S.a r) :
+    ConfirmationIdx S rho n C ↔ (∀ (i : Nat) (v : V) (r : Round), v ∈ rho.honest →
+    rho.events[i]? = some (.tick v (S.a r)) → i < n →
+    ∃ L : NamedBlock V,
+      NamedRun.blockInRun S rho L ∧
+      L ∈ (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.bodies ∧
+      L.erase = (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.core.live_confirmed ∧
+      NamedBlock.Preceq L C) := by
+  simp only [ConfirmationIdx, NamedActionReads.windowActionReadFrom, hpoint,
+    Proofs.WindowAction.windowReadFrom_point, actionReadFrom]
+
+#print axioms confirmationIdx_point
+
+/-- The point schedule recovers the original WitnessProvenanceIdx contract
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem witnessProvenanceIdx_point (S : Setup V) (rho : NamedRun V)
+    (n : Nat) (C : NamedBlock V) (hpoint : ∀ v r, (S.node v).act r = S.a r) :
+    WitnessProvenanceIdx S rho n C ↔ (C = .genesis ∨
+    ∃ (i : Nat) (v : V) (r : Round), i ≤ n ∧ v ∈ rho.honest ∧
       rho.events[i]? = some (.tick v (S.a r)) ∧
       C ∈ (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.bodies ∧
       (C.erase = (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.core.live_confirmed ∨
@@ -171,7 +207,11 @@ def WitnessProvenanceIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
           (Protocol.grade2_block_with
             (NamedProfile.gradeContract
               (actionReadFrom S (NamedRun.stateBefore S rho i v) r).cache)
-            S.E S.hc (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.core.toHealing r))
+            S.E S.hc (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.core.toHealing r))) := by
+  simp only [WitnessProvenanceIdx, NamedActionReads.windowActionReadFrom, hpoint,
+    Proofs.WindowAction.windowReadFrom_point, actionReadFrom]
+
+#print axioms witnessProvenanceIdx_point
 
 /-- The index-bounded joint history, one witness. -/
 def LayerAJointHistoryIdx (S : Setup V) (rho : NamedRun V) (n : Nat)

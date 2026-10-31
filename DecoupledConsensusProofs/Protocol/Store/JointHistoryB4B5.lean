@@ -60,11 +60,11 @@ any window round, so the same proof is replayed with those two inputs open. -/
 theorem healthy_emitted_sg_raw_at_index
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
     (cap : Time) (healthy : NamedHealthyPrefixDelivery S rho cap)
-    {a : NamedAttestation V} (ha : a.val_index ∈ rho.honest)
-    (hem : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round))
+    {a : NamedAttestation V} {sent : Time} (ha : a.val_index ∈ rho.honest)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) sent)
     (r : Round) (hwindow : a.round ∈ Protocol.latest_window S.hc.η_SG r)
-    (hearly : S.a a.round + S.E.Δ ≤ early S.E S.hc r .g2)
-    (hcap : S.a a.round + S.E.Δ ≤ cap)
+    (hearly : sent + S.E.Δ ≤ early S.E S.hc r .g2)
+    (hcap : sent + S.E.Δ ≤ cap)
     (reader : V) (hreader : reader ∈ rho.honest)
     (j : Nat) (e : NamedEvent V) (hj : rho.events[j]? = some e)
     (hjt : early S.E S.hc r .g2 ≤ e.time) :
@@ -72,9 +72,11 @@ theorem healthy_emitted_sg_raw_at_index
       Protocol.sgVote a.erase ∈ DecoupledConsensusModel.Protocol.rawInputs
         (NamedRun.stateBefore S rho j reader).st.core.toHealing.gradeView
         S.hc.η_SG r (early S.E S.hc r .g2) a.val_index := by
+  have htime := (WindowAction.run_emission_fields S hem).1
+  subst sent
   obtain ⟨td, hlo, hhi, i, hcall⟩ :=
-    healthy.broadcast a.val_index ha (.attest a) (S.a a.round) hem reader hreader hcap rfl
-  have hpost := SGArrival.honest_row_after_call S rho
+    healthy.broadcast a.val_index ha (.attest a) ((S.node a.val_index).act a.round) hem reader hreader hcap rfl
+  have hpost := NamedSGArrival.honest_row_after_call S rho
     core.toNamedScheduleWellFormed core.toNamedUnforgeable ha hem hcall hlo hhi
   obtain ⟨e', he', _, het⟩ := hcall.2
   have hdata : SGArrival.Data td (NamedRun.stateBefore S rho (i + 1) reader).st := by

@@ -757,8 +757,9 @@ interfaces are still being migrated.
 The index-bounded emission histories (`LayerAHistoryIdx` and `SGVoteIdx`)
 also use actual action inputs and `Node.act`. Their parameterized read/clock
 forms give explicit point-instance recovery of every original emission field.
-The confirmation and witness-provenance fields still describe their explicit
-paper-time reads; migrating the renewal driver remains unfinished.
+Confirmation, witness provenance, and the emitted-witness renewal driver also
+use actual action inputs. Their point corollaries recover the original
+paper-time observer contracts.
 
 For a finality head inserted during its emission tick, the history argument
 uses `CausalCarrierRowsBefore` at that tick's index. Every honest certificate
@@ -774,9 +775,25 @@ The G1/G2 positive-root proofs now trace a held SG row through its actual
 admission. Direct self-admission gives the emitting tick itself; delivery and
 carried-row admission use the sorted event order and strict carrier provenance.
 This places the emission inside the read prefix without identifying its time
-with `S.a`. The capture-readiness and renewal producers still require further
-migration. The prefix height-crossing selector uses the same strict carrier
+with `S.a`. G1/G2 capture readiness uses P2 at actual send times, with actual
+action horizon bounds derived from the consumer cutoff. The confirmed head
+may be held only after the action tick; the existing event-based healthy
+relay transports it without a pre-body identification. The point recovery
+again places the head in the pre-tick inventory. The prefix height-crossing selector uses the same strict carrier
 ordering for same-tick proposals, with an explicit point-instance recovery.
+
+The SG selector's justification and finality fallbacks use post-tick carriers
+whose certificate rows precede the current index. This works even for a
+sleeping action tick: omitting the attestation leaves the same body and
+checkpoint projection. Neither fallback assumes history at the next event.
+The renewal step calls the checked window finality-field producer directly.
+
+Relative-grade proofs identify every honest pool row with its actual emitted
+SG projection. When a hypothesis already supplies a particular interpreted
+support row, that row's own pool membership provides the equality needed by
+the support proof. The relative-majority recovery anchor now names
+`windowActionSGBlockAt`; its run scope comes from the actual input's post-tick
+inventory, and its point specialization recovers the former SG-head observer.
 
 The checked causal constructors are imported by the stable coverage consumer.
 Its remaining legacy producers, action-index histories and the complete

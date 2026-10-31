@@ -2,6 +2,7 @@ module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Protocol.Duties.Inputs.LayerAHistoryIndices
 public import DecoupledConsensusProofs.Protocol.Grades.JointHistoryB4B5Idx
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowHeightSources
 public import DecoupledConsensusProofs.Protocol.Grades.JointHistoryGaps
 
 @[expose] public section
@@ -26,12 +27,28 @@ doing the FG-source computation. -/
 def ConfirmationAtTick (S : Setup V) (rho : NamedRun V) (i : Nat)
     (C : NamedBlock V) : Prop :=
   ∀ (v : V) (r : Round), v ∈ rho.honest →
+    rho.events[i]? = some (.tick v ((S.node v).act r)) →
+    ∃ L : NamedBlock V,
+      NamedRun.blockInRun S rho L ∧
+      L ∈ (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.bodies ∧
+      L.erase = (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.live_confirmed ∧
+      NamedBlock.Preceq L C
+
+/-- The point schedule recovers the original observer contract
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem confirmationAtTick_point (S : Setup V) (rho : NamedRun V)
+    (i : Nat) (C : NamedBlock V) (hpoint : ∀ v r, (S.node v).act r = S.a r) :
+    ConfirmationAtTick S rho i C ↔ (∀ (v : V) (r : Round), v ∈ rho.honest →
     rho.events[i]? = some (.tick v (S.a r)) →
     ∃ L : NamedBlock V,
       NamedRun.blockInRun S rho L ∧
       L ∈ (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.bodies ∧
       L.erase = (actionReadFrom S (NamedRun.stateBefore S rho i v) r).st.core.live_confirmed ∧
-      NamedBlock.Preceq L C
+      NamedBlock.Preceq L C) := by
+  simp only [ConfirmationAtTick, NamedActionReads.windowActionReadFrom, hpoint,
+    Proofs.WindowAction.windowReadFrom_point, actionReadFrom]
+
+#print axioms confirmationAtTick_point
 
 /-! ## `GradedRootOnHistoryIdx`: the index form of `GradedRootOnHistory` -/
 
@@ -80,12 +97,13 @@ theorem graded_root_on_history
       intro u hu
       obtain ⟨huHon, huAwake⟩ := Finset.mem_filter.mp hu
       obtain ⟨k, hk, hka⟩ := List.any_eq_true.mp huAwake
-      have hdead := hwindowTime k hk
-      have hhor : S.a k ≤ rho.horizon :=
+      have hdead : (S.node u).act k + S.E.Δ ≤ early S.E S.hc r .g2 :=
+        S.act_deadline_le_early u (OutageInputs.window_bounds hk).2
+      have hhor : (S.node u).act k ≤ rho.horizon :=
         (le_add_of_nonneg_right S.E.Δ_pos.le).trans
           (hdead.trans ((hearlylt.le.trans hcapd).trans hcap))
       obtain ⟨i, a, H, hie, hem, hval, har, hH, hkey⟩ :=
-        awake_window_row_head S rho core.toNamedScheduleWellFormed u huHon k hka hhor
+        JointHistoryB4B5.awake_window_row_head_actual S rho core.toNamedScheduleWellFormed u huHon k hka hhor
       exact JointHistoryB4B5.capture_ready_token S rho core cap healthy hR n C
         hhistory j v hv r hje hjn hcapd u huHon k hk i a H hie hem hval har hH hkey
     obtain ⟨w, hwHon, hpos⟩ := honest_positive_of_gradeBool_ready S rho.honest
@@ -144,36 +162,36 @@ theorem fg_source_on_history_of
     (i : Nat) (hconf : ConfirmationAtTick S rho i C) (hi : i ≤ n)
     (hgraded : GradedRootOnHistoryIdx S rho n C)
     (a : NamedAttestation V) (source entry : NamedBlock V)
-    (ha : a.val_index ∈ rho.honest) (hs : SignedSourceAt S rho i a source entry) :
+    (ha : a.val_index ∈ rho.honest) (hs : WindowSignedSourceAt S rho i a source entry) :
     NamedBlock.Preceq source C := by
+  have hsourceBody := NamedWindowHeightSources.signed_source_mem_before S rho hs
   obtain ⟨htick, _hem, _hrow, hsource, hsel, _hentry, _herase, _hheight, _timeout, _hp⟩ := hs
-  have hsourceBody : source ∈ (NamedRun.stateBefore S rho i a.val_index).st.bodies := hsource
   have hsourceRun : NamedRun.blockInRun S rho source :=
     Proofs.NamedRuntime.blockInRun_of_direct S rho
       (Proofs.NamedRuntime.directBlock_of_prefix S rho ha i hsourceBody)
   unfold Protocol.fg_source_with at hsel
   cases hQ : Protocol.grade2_block_with
       (NamedProfile.gradeContract
-        (actionReadFrom S (NamedRun.stateBefore S rho i a.val_index) a.round).cache)
+        (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho i a.val_index) a.round).cache)
       S.E S.hc
-      (actionReadFrom S (NamedRun.stateBefore S rho i a.val_index) a.round).st.core.toHealing
+      (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho i a.val_index) a.round).st.core.toHealing
       a.round with
   | none => simp only [hQ, reduceCtorEq] at hsel
   | some q =>
     simp only [hQ] at hsel
     cases hd : Protocol.deepest_clear (some q)
-        (actionReadFrom S (NamedRun.stateBefore S rho i a.val_index)
+        (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho i a.val_index)
           a.round).st.core.toHealing.live_confirmed
         ((NamedProfile.gradeContract
-            (actionReadFrom S (NamedRun.stateBefore S rho i a.val_index) a.round).cache).read
+            (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho i a.val_index) a.round).cache).read
           S.E S.hc
-          (actionReadFrom S (NamedRun.stateBefore S rho i a.val_index)
+          (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho i a.val_index)
             a.round).st.core.toHealing a.round).clear with
     | some B =>
       rw [hd] at hsel
       have heB : B = source.erase := Option.some.inj hsel
       have hpre : Block.Preceq source.erase
-          (actionReadFrom S (NamedRun.stateBefore S rho i a.val_index)
+          (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho i a.val_index)
             a.round).st.core.toHealing.live_confirmed := by
         rw [← heB]; exact Proofs.Engine.deepest_clear_preceq hd
       obtain ⟨L, hLrun, _hLbody, hLe, hLC⟩ := hconf a.val_index a.round ha htick
@@ -183,7 +201,7 @@ theorem fg_source_on_history_of
       rw [hd] at hsel
       have heq : q = source.erase := Option.some.inj hsel
       obtain ⟨j, raw, hj, hjev, hfreeze, hqraw⟩ :=
-        q2_capture_at_action_read S rho i a.val_index a.round hQ
+        q2_capture_at_window_read S rho i a.val_index a.round hQ
       have hgb : gradeBool S.E
           (NamedRun.stateBefore S rho j a.val_index).st.core.toHealing.gradeView
           (NamedRun.stateBefore S rho j a.val_index).st.core.F S.hc.η_SG a.round

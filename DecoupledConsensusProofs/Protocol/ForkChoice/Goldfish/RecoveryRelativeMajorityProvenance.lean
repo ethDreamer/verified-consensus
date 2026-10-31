@@ -322,6 +322,51 @@ theorem majorityForkChoice_eq_anchor_or_honestLatestHead
     · rw [hheadRoot]
       exact hfind
 
+/-- The SG head selected by the actual pre-attestation input
+(PROTOCOL.md `sec:healing-schedule`). -/
+def windowActionSGBlockAt (S : Setup V) (rho : Run V) (v : V) (r : Round) : Block V :=
+  let n := NamedActionReads.windowActionReadAt S rho v r
+  let gc := NamedProfile.gradeContract n.cache
+  let st := n.st.core.toHealing
+  let k := S.hc.round_of st.s
+  Protocol.get_sg_vote_with gc S.E S.hc st k
+    (Protocol.grade2_block_with gc S.E S.hc st k)
+
+/-- A locally point-scheduled input recovers the paper SG head
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem windowActionSGBlockAt_point (S : Setup V) (rho : Run V) (v : V) (r : Round)
+    (hpoint : (S.node v).act r = S.a r) :
+    windowActionSGBlockAt S rho v r = actionSGBlockAt S rho v r := by
+  unfold windowActionSGBlockAt
+  rw [WindowAction.windowActionReadAt_point S rho v r hpoint]
+  rfl
+
+private theorem windowActionSGBlockAt_scope
+    (S : Setup V) {rho : Run V} (core : NamedAdmissibleCore S rho)
+    {v : V} (hv : v ∈ rho.honest) (r : Round) (i : Nat)
+    (hi : rho.events[i]? = some (.tick v ((S.node v).act r))) :
+    ∃ H : NamedBlock V, H.erase = windowActionSGBlockAt S rho v r ∧
+      NamedRun.blockInRun S rho H := by
+  let n := NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r
+  have hpre := NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hi
+  have hread : NamedActionReads.windowActionReadAt S rho v r = n := by
+    unfold NamedActionReads.windowActionReadAt
+    rw [← hpre]
+  have hinv := WindowAction.windowRead_invariant S v (NamedRun.stateBefore S rho i v)
+    ((S.node v).act r) (NamedRuntime.stateBefore_invariants S rho i v).1
+  have hmem : windowActionSGBlockAt S rho v r ∈ n.st.core.T := by
+    unfold windowActionSGBlockAt
+    rw [hread]
+    exact NamedConfirmationMembership.sg_head_mem n.cache S.E S.hc S.cfg n.st hinv
+  have htree : n.st.core.T = n.st.bodies.image NamedBlock.erase := hinv.1.1.1
+  rw [htree] at hmem
+  obtain ⟨H, hH, hHe⟩ := Finset.mem_image.mp hmem
+  have hpost : H ∈ (NamedRun.stateBefore S rho (i + 1) v).st.bodies := by
+    rw [NamedRuntime.stateBefore_tick S rho hi, (WindowAction.tick_input_projection S v _ r).1]
+    exact hH
+  exact ⟨H, hHe, NamedRuntime.blockInRun_of_direct S rho
+    (NamedRuntime.directBlock_of_prefix S rho hv (i + 1) hpost)⟩
+
 /-! ## Run-level relative-anchor provenance -/
 
 /-- At an honest action store, the relative-majority fallback either stays at
@@ -346,7 +391,7 @@ theorem actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier
       (Protocol.get_filtered_block_tree ast.toHealing.toFG) r
     A = root ∨
       ∃ v ∈ rho.honest, ∃ k < r,
-        Block.Preceq A (actionSGBlockAt S rho v k) := by
+        Block.Preceq A (windowActionSGBlockAt S rho v k) := by
   intro ast root A
   have hpure := majorityForkChoice_eq_anchor_or_honestLatestHead
     S.E (pool := ast.toHealing.sg_votes) (etaSG := S.hc.η_SG)
@@ -364,15 +409,15 @@ theorem actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier
       head, huHead, -, hheadMem, hAhead⟩
   · exact Or.inl hroot
   · right
-    have huEq : u = actionSGVoteAt S rho v k :=
+    have huEq : u = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase :=
       honestSGVote_eq_actionSGVoteAt_of_mem_actionStore
         S adm hv (w := w) (r := r) hu huval
-    let C := actionSGBlockAt S rho v k
+    let C := windowActionSGBlockAt S rho v k
     have hheadRoot : head.root = C.root := by
-      have hconfirmed : (actionSGVoteAt S rho v k).confirmed =
+      have hconfirmed : (Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase).confirmed =
           some head.root := by
         simpa only [huEq] using huHead
-      simpa only [actionSGVoteAt, C, Option.some.injEq] using hconfirmed.symm
+      exact Option.some.inj hconfirmed.symm
     have hheadMem' : head ∈ (rho.storeBeforeTime S w (S.a r)).T := by
       simpa only [ast, actionStoreAt, Run.storeBeforeTime,
         NamedActionReads.actionReadAt, NamedActionReads.actionReadFrom,
@@ -380,11 +425,11 @@ theorem actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier
     obtain ⟨headNamed, hheadNamed, hheadRun⟩ :=
       Proofs.NamedStoreBridge.runBlock_of_mem_core_T_stateBeforeTime S
         adm.toNamedAdmissibleCore.toNamedScheduleWellFormed hw (S.a r) hheadMem'
-    have hCmem : C ∈ (rho.storeBeforeTime S v (S.a k)).T := by
-      simpa only [C] using actionSGBlockAt_mem_storeBeforeTime S rho v k
+    have hpool := hu
+    rw [actionStoreAt_projectedSGVotes S rho w r] at hpool
+    obtain ⟨_, i, hi, _⟩ := honestSGVote_actionEmission_of_mem_storeBeforeTime S adm hv hpool huval
     obtain ⟨CNamed, hCNamed, hCRun⟩ :=
-      Proofs.NamedStoreBridge.runBlock_of_mem_core_T_stateBeforeTime S
-        adm.toNamedAdmissibleCore.toNamedScheduleWellFormed hv (S.a k) hCmem
+      windowActionSGBlockAt_scope S adm.toNamedAdmissibleCore hv k i hi
     have hheadRootNamed : headNamed.root = CNamed.root := by
       rw [← Proofs.NamedWire.erase_root headNamed, ← Proofs.NamedWire.erase_root CNamed,
         hheadNamed, hCNamed]
@@ -400,6 +445,32 @@ theorem actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier
         _ = CNamed.erase := congrArg NamedBlock.erase hheadEqNamed
         _ = C := hCNamed
     exact ⟨v, hv, k, hkr, by simpa only [C, hheadEq] using hAhead⟩
+
+/-- Point specialization recovers the original carrier observer
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (hfb : BelowOneThird S rho.honest)
+    {w : V} (hw : w ∈ rho.honest) (r : Round)
+    (hrepresented : ∀ v ∈ rho.honest,
+      Protocol.represented
+        (actionStoreAt S rho w r).toHealing.sg_votes
+        S.hc.η_SG v r = true) :
+    let ast := actionStoreAt S rho w r
+    let root := Protocol.get_fg_root ast.toHealing.toFG
+    let A := Protocol.majority_fork_choice S.E
+      ast.toHealing.sg_votes S.hc.η_SG ast.T root
+      (Protocol.get_filtered_block_tree ast.toHealing.toFG) r
+    A = root ∨
+      ∃ v ∈ rho.honest, ∃ k < r,
+        Block.Preceq A (actionSGBlockAt S rho v k) := by
+  have h := actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier S adm hfb hw r hrepresented
+  simpa only [windowActionSGBlockAt_point S rho _ _ (hpoint _ _)] using h
+
+#print axioms windowActionSGBlockAt_point
+#print axioms actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier
+#print axioms actionRelativeAnchor_eq_fgRoot_or_preceq_honestEarlierCarrier_point
 
 end HealingSurface
 end Proofs

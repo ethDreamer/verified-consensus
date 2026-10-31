@@ -1,5 +1,6 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowHistoryState
 public import DecoupledConsensusProofs.Protocol.Duties.Inputs.LayerAHistoryIndices
 public import DecoupledConsensusProofs.Protocol.Grades.JointHistoryB4B5Idx
 public import DecoupledConsensusProofs.Protocol.Grades.JointHistoryGapsIdx
@@ -33,37 +34,38 @@ theorem capture_ready_token_g1
     (w : V) (hw : w ∈ rho.honest) (k : Round)
     (hkw : k ∈ Protocol.latest_window S.hc.η_SG r)
     (i : Nat) (a : NamedAttestation V) (H : NamedBlock V)
-    (hie : rho.events[i]? = some (.tick w (S.a k)))
-    (hem : NamedRun.emits S rho w (.attest a) (S.a k))
+    (hie : rho.events[i]? = some (.tick w ((S.node w).act k)))
+    (hem : NamedRun.emits S rho w (.attest a) ((S.node w).act k))
     (hval : a.val_index = w) (har : a.round = k)
-    (hH : H ∈ (NamedRun.stateBefore S rho i w).st.bodies)
+    (hH : H ∈ (NamedRun.stateBefore S rho (i + 1) w).st.bodies)
     (hkey : a.confirmed = some H.root) :
     (readyView (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
       (NamedRun.stateBefore S rho j v).st.core.F S.hc.η_SG r
       (early S.E S.hc r .g1) w).Nonempty := by
   have hkr : k < r := (OutageInputs.window_bounds hkw).2
-  have hdead : S.a k + S.E.Δ ≤ early S.E S.hc r .g1 := action_delta_le_early_g1 S hkr hR
+  have hdead : (S.node w).act k + S.E.Δ ≤ early S.E S.hc r .g1 := (S.act_deadline_le_early w hkr).trans (by
+    simp only [early, Phase.earlyOffset]; have hd := S.E.Δ_pos; linarith)
   have hearlylt : early S.E S.hc r .g1 < domain S.E S.hc r .g1 := early_g1_lt_domain_g1 S r
-  have hcapk : S.a k + S.E.Δ ≤ cap := hdead.trans (hearlylt.le.trans hcapd)
-  have hemA : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+  have hcapk : (S.node w).act k + S.E.Δ ≤ cap := hdead.trans (hearlylt.le.trans hcapd)
+  have hemA : NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
     rw [hval, har]; exact hem
   obtain ⟨-, hrawA⟩ := healthy_emitted_sg_raw_at_index_g1 S rho core cap healthy
     (by rw [hval]; exact hw) hemA r (by rw [har]; exact hkw)
-    (by rw [har]; exact hdead) (by rw [har]; exact hcapk) v hv j
+    (by rw [hval, har]; exact hdead) (by rw [hval, har]; exact hcapk) v hv j
     (.tick v (domain S.E S.hc r .g1)) hje hearlylt.le
   have hraw : Protocol.sgVote a.erase ∈ DecoupledConsensusModel.Protocol.rawInputs
       (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
       S.hc.η_SG r (early S.E S.hc r .g1) w := by rw [← hval]; exact hrawA
   have hHrun : NamedRun.blockInRun S rho H :=
     Proofs.NamedRuntime.blockInRun_of_direct S rho
-      (Proofs.NamedRuntime.directBlock_of_prefix S rho hw i hH)
+      (Proofs.NamedRuntime.directBlock_of_prefix S rho hw (i + 1) hH)
   obtain ⟨i', hi', hobj⟩ := hem
-  have hSaklt : S.a k < domain S.E S.hc r .g1 :=
-    (lt_add_of_pos_right (S.a k) S.E.Δ_pos).trans_le (hdead.trans hearlylt.le)
+  have hSaklt : (S.node w).act k < domain S.E S.hc r .g1 :=
+    (lt_add_of_pos_right ((S.node w).act k) S.E.Δ_pos).trans_le (hdead.trans hearlylt.le)
   have hi'j : i' < j := index_lt_of_time_lt rho core.sorted hi' hje hSaklt
   have hi'n : i' < n := lt_trans hi'j hjn
   obtain ⟨K, -, -, hKroot, hKC⟩ :=
-    hhistory.2.1 i' w (S.a k) a hw hi' hobj hi'n H.root hkey
+    hhistory.2.1 i' w ((S.node w).act k) a hw hi' hobj hi'n H.root hkey
   have hHC : NamedBlock.Preceq H C := by
     have heq : K = H := core.root_injective C H hhistory.1.1 hHrun K H
       (Or.inl hKC) (Or.inr (named_preceq_self H)) hKroot
@@ -91,7 +93,7 @@ theorem capture_ready_token_g1
         (Or.inl (named_preceq_self other)) (Or.inr (named_preceq_self H)) hroots
       exact congrArg NamedBlock.erase heq
     have hStampedMono : ∀ (ts : TimestampMap (Block V)) (x : Block V),
-        stampedBefore ts (S.a k + S.E.Δ) x = true →
+        stampedBefore ts ((S.node w).act k + S.E.Δ) x = true →
         stampedBefore ts (early S.E S.hc r .g1) x = true := by
       intro ts x hx
       unfold stampedBefore at hx ⊢
@@ -103,7 +105,7 @@ theorem capture_ready_token_g1
     have hstamp : stampedBefore (NamedRun.stateBefore S rho j v).st.core.timestamp_block
         (early S.E S.hc r .g1) H.erase = true := by
       obtain ⟨nd, hndEq, hndStrict⟩ :=
-        Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho core.sorted (S.a k + S.E.Δ)
+        Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho core.sorted ((S.node w).act k + S.E.Δ)
       have hndj : nd ≤ j := by
         by_contra hcon
         have hjlt : j < nd := by omega
@@ -117,13 +119,13 @@ theorem capture_ready_token_g1
         have hHmemNd : H ∈ (NamedRun.stateBefore S rho nd v).st.bodies :=
           ViabilityHistoryTime.ancestor_body_mem hpcNd hFdmem hHFd
         have hHmemD : H ∈
-            (NamedRun.stateBeforeTime S rho (S.a k + S.E.Δ) v).st.bodies := by
+            (NamedRun.stateBeforeTime S rho ((S.node w).act k + S.E.Δ) v).st.bodies := by
           rw [hndEq]; exact hHmemNd
         have hstampD := NamedBlockStamp.held_body_stampedBefore_stateBeforeTime S rho
-          core.toNamedScheduleWellFormed v (S.a k + S.E.Δ) H hHmemD
+          core.toNamedScheduleWellFormed v ((S.node w).act k + S.E.Δ) H hHmemD
         have hNdStamped : stampedBefore
             (NamedRun.stateBefore S rho nd v).st.core.timestamp_block
-            (S.a k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
+            ((S.node w).act k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
         have hNd := hStampedMono _ _ hNdStamped
         obtain ⟨-, hstampEq⟩ :=
           NamedBlockStamp.stateBefore_body_stamp_mono S rho v hndj hHmemNd
@@ -132,19 +134,17 @@ theorem capture_ready_token_g1
         exact hNd
       · have hieq := Proofs.NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hie
         have hFtimeD : Block.Preceq
-            (NamedRun.stateBeforeTime S rho (S.a k + S.E.Δ) v).st.core.F H.erase := by
+            (NamedRun.stateBeforeTime S rho ((S.node w).act k + S.E.Δ) v).st.core.F H.erase := by
           rw [hndEq, ← hFde]
           exact Proofs.NamedWire.erase_preceq hFdH
-        have hHsrc : H ∈ (NamedRun.stateBeforeTime S rho (S.a k) w).st.bodies := by
-          rw [← hieq]; exact hH
-        obtain ⟨hHeldD, hstampD, -⟩ := NamedHealthyHeadReady.healthy_head_body_at_read
-          S rho core cap healthy w hw v hv H (S.a k) (S.a k + S.E.Δ) (S.a k + S.E.Δ)
-          hHsrc (le_refl _) (le_refl _) hcapk hFtimeD
+        obtain ⟨hHeldD, hstampD, -⟩ := NamedHealthyHeadReady.healthy_head_body_at_read_of_event
+          S rho core cap healthy w hw v hv H ((S.node w).act k) ((S.node w).act k + S.E.Δ) ((S.node w).act k + S.E.Δ)
+          i (.tick w ((S.node w).act k)) hie rfl hH (le_refl _) (le_refl _) hcapk hFtimeD
         have hHmemNd : H ∈ (NamedRun.stateBefore S rho nd v).st.bodies := by
           rw [← hndEq]; exact hHeldD
         have hNdStamped : stampedBefore
             (NamedRun.stateBefore S rho nd v).st.core.timestamp_block
-            (S.a k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
+            ((S.node w).act k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
         have hNd := hStampedMono _ _ hNdStamped
         obtain ⟨-, hstampEq⟩ :=
           NamedBlockStamp.stateBefore_body_stamp_mono S rho v hndj hHmemNd
@@ -173,17 +173,12 @@ theorem capture_ready_token_g1
     have hjeq : NamedRun.stateBefore S rho j v =
         NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g1) v :=
       Proofs.NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hje
-    have hieq : NamedRun.stateBefore S rho i w =
-        NamedRun.stateBeforeTime S rho (S.a k) w :=
-      Proofs.NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hie
-    have hHsrc : H ∈ (NamedRun.stateBeforeTime S rho (S.a k) w).st.bodies := by
-      rw [← hieq]; exact hH
     have hFtime : Block.Preceq
         (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g1) v).st.core.F H.erase := by
       rw [← hjeq]; exact hF
-    obtain ⟨-, hstampT, hlookupT⟩ := NamedHealthyHeadReady.healthy_head_body_at_read
-      S rho core cap healthy w hw v hv H (S.a k) (early S.E S.hc r .g1)
-      (domain S.E S.hc r .g1) hHsrc hdead hearlylt.le (hearlylt.le.trans hcapd) hFtime
+    obtain ⟨-, hstampT, hlookupT⟩ := NamedHealthyHeadReady.healthy_head_body_at_read_of_event
+      S rho core cap healthy w hw v hv H ((S.node w).act k) (early S.E S.hc r .g1)
+      (domain S.E S.hc r .g1) i (.tick w ((S.node w).act k)) hie rfl hH hdead hearlylt.le (hearlylt.le.trans hcapd) hFtime
     have hstamp : stampedBefore (NamedRun.stateBefore S rho j v).st.core.timestamp_block
         (early S.E S.hc r .g1) H.erase = true := by rw [hjeq]; exact hstampT
     have hlookup : Block.find? (NamedRun.stateBefore S rho j v).st.core.T H.root =
@@ -329,12 +324,14 @@ theorem graded_root_on_history_g1
       intro u hu
       obtain ⟨huHon, huAwake⟩ := Finset.mem_filter.mp hu
       obtain ⟨k, hk, hka⟩ := List.any_eq_true.mp huAwake
-      have hdead := hwindowTime k hk
-      have hhor : S.a k ≤ rho.horizon :=
+      have hdead : (S.node u).act k + S.E.Δ ≤ early S.E S.hc r .g1 :=
+        (S.act_deadline_le_early u (OutageInputs.window_bounds hk).2).trans (by
+          simp only [early, Phase.earlyOffset]; have hd := S.E.Δ_pos; linarith)
+      have hhor : (S.node u).act k ≤ rho.horizon :=
         (le_add_of_nonneg_right S.E.Δ_pos.le).trans
           (hdead.trans ((hearlylt.le.trans hcapd).trans hcap))
       obtain ⟨i, a, H, hie, hem, hval, har, hH, hkey⟩ :=
-        awake_window_row_head S rho core.toNamedScheduleWellFormed u huHon k hka hhor
+        JointHistoryB4B5.awake_window_row_head_actual S rho core.toNamedScheduleWellFormed u huHon k hka hhor
       exact capture_ready_token_g1 S rho core cap healthy hR n C hhistory j v hv r hje hjn hcapd
         u huHon k hk i a H hie hem hval har hH hkey
     obtain ⟨w, hwHon, hpos⟩ := honest_positive_of_gradeBool_ready_g1 S rho.honest
@@ -399,10 +396,10 @@ theorem sg_vote_on_history
     (m : Nat) (C : NamedBlock V) (hhistory : LayerAJointHistoryIdx S rho m C)
     (hcapm : ∀ j, j < m → ∀ e : NamedEvent V, rho.events[j]? = some e → e.time ≤ cap)
     (i : Nat) (v : V) (r : Round) (hv : v ∈ rho.honest)
-    (hi : rho.events[i]? = some (.tick v (S.a r)))
+    (hi : rho.events[i]? = some (.tick v ((S.node v).act r)))
     (him : i ≤ m)
     (hconf4 : ConfirmationAtTick S rho i C) :
-    let n := actionReadFrom S (NamedRun.stateBefore S rho i v) r
+    let n := NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r
     let key := Protocol.get_sg_vote_with (NamedProfile.gradeContract n.cache) S.E S.hc
       n.st.core.toHealing r
       (Protocol.grade2_block_with (NamedProfile.gradeContract n.cache) S.E S.hc
@@ -410,6 +407,16 @@ theorem sg_vote_on_history
     ∃ K : NamedBlock V, NamedRun.blockInRun S rho K ∧ K ∈ n.st.bodies ∧ K.erase = key ∧
       (NamedBlock.Preceq K C ∨ NamedBlock.Preceq C K) := by
   intro n key
+  have hinv := WindowAction.windowRead_invariant S v (NamedRun.stateBefore S rho i v)
+    ((S.node v).act r) (NamedRuntime.stateBefore_invariants S rho i v).1
+  have hpost : (NamedRun.stateBefore S rho (i + 1) v).st.bodies = n.st.bodies := by
+    rw [NamedRuntime.stateBefore_tick S rho hi]
+    exact (WindowAction.tick_input_projection S v _ r).1
+  have hscope (B : NamedBlock V) (hB : B ∈ n.st.bodies) : NamedRun.blockInRun S rho B :=
+    NamedRuntime.blockInRun_of_direct S rho
+      (NamedRuntime.directBlock_of_prefix S rho hv (i + 1) (hpost.symm ▸ hB))
+  have hcheckpoints := NamedWindowHistoryState.checkpoints_at_action S rho core m C
+    hhistory.1 i v r hv him hi hbad
   set before := NamedRun.stateBefore S rho i v with hbefore
   have hgraded := JointHistoryGaps.graded_root_on_history S rho cap core healthy
     committees hR hcap windows hbad m C hhistory hcapm
@@ -433,28 +440,27 @@ theorem sg_vote_on_history
     obtain ⟨K, hKL, hKe⟩ := ReadyHeadReturnTime.named_ancestor_of_erase B L
       (by rw [hLe]; exact hpre)
     have hpc : NamedStore.NamedParentClosed n.st :=
-      (Proofs.NamedRuntime.stateBefore_invariants S rho i v).1.1.1.2.2.1
+      hinv.1.1.2.2.1
     have hKmem : K ∈ n.st.bodies := ViabilityHistoryTime.ancestor_body_mem hpc hLbody hKL
     have hKrun : NamedRun.blockInRun S rho K :=
-      Proofs.NamedRuntime.blockInRun_of_direct S rho (Proofs.NamedRuntime.directBlock_of_prefix S rho hv i hKmem)
+      hscope K hKmem
     exact ⟨K, hKrun, hKmem, hKe, Or.inl (named_preceq_trans hKL hLC)⟩
   | none =>
     cases hq2 : DecoupledConsensusModel.Protocol.grade2Block n.st.core.toHealing frame with
     | some Q =>
       -- Arm 2: the Q2 fallback. `Q` is held (`runtime_Q2_mem`); its provenance
-      -- (`q2_capture_at_action_read` + `graded_root_on_history`) places it
+      -- (`q2_capture_at_window_read` + `graded_root_on_history`) places it
       -- below a run block `K` below `C`.
       have hQ2mem : Q ∈ n.st.core.toHealing.T :=
         Proofs.NamedConfirmationMembership.runtime_Q2_mem n.cache S.E S.hc
           n.st.core.toHealing r Q hq2
       have hcohn : Proofs.NamedStore.Coherent S.E S.cfg n.st :=
-        (Proofs.NamedRuntime.stateBefore_invariants S rho i v).1.1.1
+        hinv.1.1
       have hQimg : Q ∈ n.st.bodies.image NamedBlock.erase := hcohn.1 ▸ hQ2mem
       obtain ⟨K'', hK''mem, hK''e⟩ := Finset.mem_image.mp hQimg
       have hK''run : NamedRun.blockInRun S rho K'' :=
-        Proofs.NamedRuntime.blockInRun_of_direct S rho
-          (Proofs.NamedRuntime.directBlock_of_prefix S rho hv i hK''mem)
-      obtain ⟨j, raw, hj, hjev, hfreeze, hqraw⟩ := q2_capture_at_action_read S rho i v r hq2
+        hscope K'' hK''mem
+      obtain ⟨j, raw, hj, hjev, hfreeze, hqraw⟩ := q2_capture_at_window_read S rho i v r hq2
       have hgb : gradeBool S.E (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
           (NamedRun.stateBefore S rho j v).st.core.F S.hc.η_SG r
           (early S.E S.hc r .g2) (late S.E S.hc r .g2) raw = true := by
@@ -471,8 +477,8 @@ theorem sg_vote_on_history
       -- both by arm 3 directly and by three of arm 4's four sub-cases. Both
       -- sub-arms now read directly at the acting tick's own index `i`: no
       -- `stateBefore_strict_prefix`/`PrefixThrough` reconstruction is needed,
-      -- since the index forms of `justification_on_history_chain` and clause
-      -- (3) both already take a bare `i ≤ m`.
+      -- the post-tick carriers use strictly earlier certificate rows
+      -- through `checkpoints_at_action`.
       have hgetFgRoot : ∃ K : NamedBlock V, NamedRun.blockInRun S rho K ∧ K ∈ n.st.bodies ∧
           K.erase = Protocol.get_fg_root n.st.core.toHealing.toFG ∧
           (NamedBlock.Preceq K C ∨ NamedBlock.Preceq C K) := by
@@ -483,15 +489,14 @@ theorem sg_vote_on_history
             exact ite_eq_left hmaxj
           rw [hfgroot]
           obtain ⟨J, hJrun, hJbody, hJe, hJC⟩ :=
-            HistoryProofs.justification_on_history_chain S rho core m C hhistory.1
-              i v hv him hbad
+            hcheckpoints.1
           exact ⟨J, hJrun, hJbody, hJe, Or.inl hJC⟩
         · have hfgroot : Protocol.get_fg_root n.st.core.toHealing.toFG =
               n.st.core.toHealing.F := by
             unfold Protocol.get_fg_root
             exact ite_eq_right hmaxj
           rw [hfgroot]
-          obtain ⟨F, hFrun, hFmem, hFe, hFC⟩ := hhistory.1.2.2.2 i v hv him
+          obtain ⟨F, hFrun, hFmem, hFe, hFC⟩ := hcheckpoints.2
           exact ⟨F, hFrun, hFmem, hFe, Or.inl hFC⟩
       by_cases hg2some : (frame.g2.bind id).isSome
       · -- Arm 3: the FG-root fallback.
@@ -517,7 +522,7 @@ theorem sg_vote_on_history
               -- The genuinely new case: the active prefix of the frozen G1
               -- root. `AP` is a member of the raw tree (`activePrefix_mem` +
               -- `get_filtered_block_tree_subset`); its provenance
-              -- (`g1_capture_at_action_read` + `graded_root_on_history_g1`)
+              -- (`g1_capture_at_window_read` + `graded_root_on_history_g1`)
               -- places `root`, hence `AP`, below a run block `K` below `C`.
               have haval : DecoupledConsensusModel.Protocol.anchor S.E S.hc n.st.core.toHealing r
                   (some (some root)) = AP := by
@@ -527,16 +532,15 @@ theorem sg_vote_on_history
                 Proofs.Records.get_filtered_block_tree_subset n.st.core.toHealing.toFG
                   (NamedProposalParent.activePrefix_mem _ root AP hap)
               have hcohn : Proofs.NamedStore.Coherent S.E S.cfg n.st :=
-                (Proofs.NamedRuntime.stateBefore_invariants S rho i v).1.1.1
+                hinv.1.1
               have hAPimg : AP ∈ n.st.bodies.image NamedBlock.erase := hcohn.1 ▸ hAPmem
               obtain ⟨K'', hK''mem, hK''e⟩ := Finset.mem_image.mp hAPimg
               have hK''run : NamedRun.blockInRun S rho K'' :=
-                Proofs.NamedRuntime.blockInRun_of_direct S rho
-                  (Proofs.NamedRuntime.directBlock_of_prefix S rho hv i hK''mem)
+                hscope K'' hK''mem
               have hAProot : Block.Preceq AP root :=
                 (Finset.mem_filter.mp (Proofs.Engine.deepest?_mem hap)).2
               obtain ⟨j, raw, hj, hjev, hfreeze, hrootraw⟩ :=
-                g1_capture_at_action_read S rho i v r hg1
+                g1_capture_at_window_read S rho i v r hg1
               have hgb : gradeBool S.E (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
                   (NamedRun.stateBefore S rho j v).st.core.F S.hc.η_SG r
                   (early S.E S.hc r .g1) (late S.E S.hc r .g1) raw = true := by
@@ -549,6 +553,39 @@ theorem sg_vote_on_history
               have hK''K : NamedBlock.Preceq K'' K :=
                 named_of_erase_preceq S rho core hK''run hKrun (by rw [hK''e]; exact hAPK)
               exact ⟨K'', hK''run, hK''mem, hK''e, Or.inl (named_preceq_trans hK''K hKC)⟩
+
+/-- The point instance recovers the original SG selector contract
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem sg_vote_on_history_point
+    (S : Setup V) (rho : NamedRun V) (cap : Time)
+    (core : NamedAdmissibleCore S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (healthy : NamedHealthyPrefixDelivery S rho cap)
+    (committees : HonestCommittees S rho.honest) (hR : 3 ≤ S.hc.R)
+    (hcap : cap ≤ rho.horizon)
+    (windows : ∀ k, 0 < k → domain S.E S.hc k .g2 ≤ cap →
+      AwakeWindowMajority S.E (fun v => (S.node v).awake) rho.honest S.hc.η_SG k)
+    (hbad : S.E.electorate.weightOf (Finset.univ \ rho.honest) < S.E.q)
+    (m : Nat) (C : NamedBlock V) (hhistory : LayerAJointHistoryIdx S rho m C)
+    (hcapm : ∀ j, j < m → ∀ e : NamedEvent V, rho.events[j]? = some e → e.time ≤ cap)
+    (i : Nat) (v : V) (r : Round) (hv : v ∈ rho.honest)
+    (hi : rho.events[i]? = some (.tick v (S.a r)))
+    (him : i ≤ m)
+    (hconf4 : ConfirmationAtTick S rho i C) :
+    let n := actionReadFrom S (NamedRun.stateBefore S rho i v) r
+    let key := Protocol.get_sg_vote_with (NamedProfile.gradeContract n.cache) S.E S.hc
+      n.st.core.toHealing r
+      (Protocol.grade2_block_with (NamedProfile.gradeContract n.cache) S.E S.hc
+        n.st.core.toHealing r)
+    ∃ K : NamedBlock V, NamedRun.blockInRun S rho K ∧ K ∈ n.st.bodies ∧ K.erase = key ∧
+      (NamedBlock.Preceq K C ∨ NamedBlock.Preceq C K) := by
+  have h := sg_vote_on_history S rho cap core healthy committees hR hcap windows hbad
+    m C hhistory hcapm i v r hv (by simpa only [hpoint] using hi) him hconf4
+  simpa only [NamedActionReads.windowActionReadFrom, hpoint,
+    WindowAction.windowReadFrom_point, actionReadFrom] using! h
+
+#print axioms sg_vote_on_history
+#print axioms sg_vote_on_history_point
 
 end DecoupledConsensusModel.Proofs.NamedOutageHistory.SGVoteOnHistory
 

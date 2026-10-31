@@ -55,6 +55,51 @@ theorem index_lt_of_time_lt (rho : NamedRun V)
     injection hj with hef
     exact absurd (hef ▸ ht) (lt_irrefl _)
 
+/-- An awake validator emits its actual row, whose confirmed head is retained
+after the action tick (PROTOCOL.md `sec:healing-schedule`). -/
+theorem awake_window_row_head_actual (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (w : V) (hw : w ∈ rho.honest) (k : Round)
+    (hawake : (S.node w).awake k = true) (hhor : (S.node w).act k ≤ rho.horizon) :
+    ∃ (i : Nat) (a : NamedAttestation V) (H : NamedBlock V),
+      rho.events[i]? = some (.tick w ((S.node w).act k)) ∧
+      NamedRun.emits S rho w (.attest a) ((S.node w).act k) ∧
+      a.val_index = w ∧ a.round = k ∧
+      H ∈ (NamedRun.stateBefore S rho (i + 1) w).st.bodies ∧ a.confirmed = some H.root := by
+  have hem := WindowAction.honest_emits_action S sch hw k hawake hhor
+  have hf := WindowAction.run_emission_fields S hem
+  have hr : (NamedActionReads.windowActionAttestationAt S rho w k).round = k := by
+    have h := S.act_round w (NamedActionReads.windowActionAttestationAt S rho w k).round
+    rw [← hf.1, S.act_round] at h
+    exact h.symm
+  obtain ⟨i, hi, _, H, hH, hkey⟩ := NamedOutageInputs.emitted_attestation_head S rho hem
+  refine ⟨i, _, H, hi, hem, hf.2.2, hr, ?_, hkey⟩
+  rw [NamedRuntime.stateBefore_tick S rho hi, (WindowAction.tick_input_projection S w _ k).1]
+  simpa only [hr] using hH
+
+/-- At the point schedule the emitted head is already in the pre-tick body
+inventory, recovering the original readiness producer (PROTOCOL.md `sec:healing-schedule`). -/
+theorem awake_window_row_head_point (S : Setup V) (rho : NamedRun V)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (sch : NamedScheduleWellFormed S rho) (w : V) (hw : w ∈ rho.honest) (k : Round)
+    (hawake : (S.node w).awake k = true) (hhor : S.a k ≤ rho.horizon) :
+    ∃ (i : Nat) (a : NamedAttestation V) (H : NamedBlock V),
+      rho.events[i]? = some (.tick w (S.a k)) ∧
+      NamedRun.emits S rho w (.attest a) (S.a k) ∧
+      a.val_index = w ∧ a.round = k ∧
+      H ∈ (NamedRun.stateBefore S rho i w).st.bodies ∧ a.confirmed = some H.root := by
+  obtain ⟨i, a, H, hi, hem, hv, hr, hH, hkey⟩ :=
+    awake_window_row_head_actual S rho sch w hw k hawake (by simpa only [hpoint] using hhor)
+  have hinput := (WindowAction.tick_input_projection S w (NamedRun.stateBefore S rho i w) k).1
+  rw [NamedRuntime.stateBefore_tick S rho hi, hinput] at hH
+  refine ⟨i, a, H, by simpa only [hpoint] using hi,
+    by simpa only [hpoint] using hem, hv, hr, ?_, hkey⟩
+  simpa only [NamedActionReads.windowActionReadFrom, hpoint,
+    WindowAction.windowReadFrom_point] using! hH
+
+#print axioms awake_window_row_head_point
+
+#print axioms awake_window_row_head_actual
+
 /-- Index form of `JointHistoryB4B5Time.capture_ready_token`. -/
 theorem capture_ready_token
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
@@ -67,40 +112,40 @@ theorem capture_ready_token
     (w : V) (hw : w ∈ rho.honest) (k : Round)
     (hkw : k ∈ Protocol.latest_window S.hc.η_SG r)
     (i : Nat) (a : NamedAttestation V) (H : NamedBlock V)
-    (hie : rho.events[i]? = some (.tick w (S.a k)))
-    (hem : NamedRun.emits S rho w (.attest a) (S.a k))
+    (hie : rho.events[i]? = some (.tick w ((S.node w).act k)))
+    (hem : NamedRun.emits S rho w (.attest a) ((S.node w).act k))
     (hval : a.val_index = w) (har : a.round = k)
-    (hH : H ∈ (NamedRun.stateBefore S rho i w).st.bodies)
+    (hH : H ∈ (NamedRun.stateBefore S rho (i + 1) w).st.bodies)
     (hkey : a.confirmed = some H.root) :
     (readyView (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
       (NamedRun.stateBefore S rho j v).st.core.F S.hc.η_SG r
       (early S.E S.hc r .g2) w).Nonempty := by
   have hkr : k < r := (OutageInputs.window_bounds hkw).2
-  have hdead : S.a k + S.E.Δ ≤ early S.E S.hc r .g2 := action_delta_le_early_g2 S hkr hR
+  have hdead : (S.node w).act k + S.E.Δ ≤ early S.E S.hc r .g2 := S.act_deadline_le_early w hkr
   have hearlylt : early S.E S.hc r .g2 < domain S.E S.hc r .g2 := early_g2_lt_domain_g2 S r
-  have hcapk : S.a k + S.E.Δ ≤ cap := hdead.trans (hearlylt.le.trans hcapd)
-  have hemA : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+  have hcapk : (S.node w).act k + S.E.Δ ≤ cap := hdead.trans (hearlylt.le.trans hcapd)
+  have hemA : NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
     rw [hval, har]; exact hem
   obtain ⟨-, hrawA⟩ := healthy_emitted_sg_raw_at_index S rho core cap healthy
     (by rw [hval]; exact hw) hemA r (by rw [har]; exact hkw)
-    (by rw [har]; exact hdead) (by rw [har]; exact hcapk) v hv j
+    (by rw [hval, har]; exact hdead) (by rw [hval, har]; exact hcapk) v hv j
     (.tick v (domain S.E S.hc r .g2)) hje hearlylt.le
   have hraw : Protocol.sgVote a.erase ∈ DecoupledConsensusModel.Protocol.rawInputs
       (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
       S.hc.η_SG r (early S.E S.hc r .g2) w := by rw [← hval]; exact hrawA
   have hHrun : NamedRun.blockInRun S rho H :=
     Proofs.NamedRuntime.blockInRun_of_direct S rho
-      (Proofs.NamedRuntime.directBlock_of_prefix S rho hw i hH)
+      (Proofs.NamedRuntime.directBlock_of_prefix S rho hw (i + 1) hH)
   -- `i'` (w's own action-tick index for row `a`) sits strictly below `j`: its
   -- time `S.a k` is strictly below `j`'s time by schedule arithmetic alone,
   -- so `index_lt_of_time_lt` gives the index order with no provenance step.
   obtain ⟨i', hi', hobj⟩ := hem
-  have hSaklt : S.a k < domain S.E S.hc r .g2 :=
-    (lt_add_of_pos_right (S.a k) S.E.Δ_pos).trans_le (hdead.trans hearlylt.le)
+  have hSaklt : (S.node w).act k < domain S.E S.hc r .g2 :=
+    (lt_add_of_pos_right ((S.node w).act k) S.E.Δ_pos).trans_le (hdead.trans hearlylt.le)
   have hi'j : i' < j := index_lt_of_time_lt rho core.sorted hi' hje hSaklt
   have hi'n : i' < n := lt_trans hi'j hjn
   obtain ⟨K, -, -, hKroot, hKC⟩ :=
-    hhistory.2.1 i' w (S.a k) a hw hi' hobj hi'n H.root hkey
+    hhistory.2.1 i' w ((S.node w).act k) a hw hi' hobj hi'n H.root hkey
   have hHC : NamedBlock.Preceq H C := by
     have heq : K = H := core.root_injective C H hhistory.1.1 hHrun K H
       (Or.inl hKC) (Or.inr (named_preceq_self H)) hKroot
@@ -111,7 +156,7 @@ theorem capture_ready_token
   rcases ViabilityHistoryTime.named_common_chain hHC hFvC with hHFv | hFvH
   · -- The confirmed head is already an ancestor of the reader's own
     -- finalized body: renew clause (3) a second time, at the confirmed
-    -- head's own arrival DEADLINE `d = S.a k + Δ`, using the index form's
+    -- head's own arrival DEADLINE `d = (S.node w).act k + Δ`, using the index form's
     -- bare `nd ≤ n` (from `nd ≤ j ≤ n`) in place of a rebuilt prefix.
     have hpc := (Proofs.NamedRuntime.stateBefore_invariants S rho j v).1.1.1.2.2.1
     have hHmem : H ∈ (NamedRun.stateBefore S rho j v).st.bodies :=
@@ -134,7 +179,7 @@ theorem capture_ready_token
         (Or.inl (named_preceq_self other)) (Or.inr (named_preceq_self H)) hroots
       exact congrArg NamedBlock.erase heq
     have hStampedMono : ∀ (ts : TimestampMap (Block V)) (x : Block V),
-        stampedBefore ts (S.a k + S.E.Δ) x = true →
+        stampedBefore ts ((S.node w).act k + S.E.Δ) x = true →
         stampedBefore ts (early S.E S.hc r .g2) x = true := by
       intro ts x hx
       unfold stampedBefore at hx ⊢
@@ -146,7 +191,7 @@ theorem capture_ready_token
     have hstamp : stampedBefore (NamedRun.stateBefore S rho j v).st.core.timestamp_block
         (early S.E S.hc r .g2) H.erase = true := by
       obtain ⟨nd, hndEq, hndStrict⟩ :=
-        Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho core.sorted (S.a k + S.E.Δ)
+        Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho core.sorted ((S.node w).act k + S.E.Δ)
       have hndj : nd ≤ j := by
         by_contra hcon
         have hjlt : j < nd := by omega
@@ -160,13 +205,13 @@ theorem capture_ready_token
         have hHmemNd : H ∈ (NamedRun.stateBefore S rho nd v).st.bodies :=
           ViabilityHistoryTime.ancestor_body_mem hpcNd hFdmem hHFd
         have hHmemD : H ∈
-            (NamedRun.stateBeforeTime S rho (S.a k + S.E.Δ) v).st.bodies := by
+            (NamedRun.stateBeforeTime S rho ((S.node w).act k + S.E.Δ) v).st.bodies := by
           rw [hndEq]; exact hHmemNd
         have hstampD := NamedBlockStamp.held_body_stampedBefore_stateBeforeTime S rho
-          core.toNamedScheduleWellFormed v (S.a k + S.E.Δ) H hHmemD
+          core.toNamedScheduleWellFormed v ((S.node w).act k + S.E.Δ) H hHmemD
         have hNdStamped : stampedBefore
             (NamedRun.stateBefore S rho nd v).st.core.timestamp_block
-            (S.a k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
+            ((S.node w).act k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
         have hNd := hStampedMono _ _ hNdStamped
         obtain ⟨-, hstampEq⟩ :=
           NamedBlockStamp.stateBefore_body_stamp_mono S rho v hndj hHmemNd
@@ -175,19 +220,17 @@ theorem capture_ready_token
         exact hNd
       · have hieq := Proofs.NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hie
         have hFtimeD : Block.Preceq
-            (NamedRun.stateBeforeTime S rho (S.a k + S.E.Δ) v).st.core.F H.erase := by
+            (NamedRun.stateBeforeTime S rho ((S.node w).act k + S.E.Δ) v).st.core.F H.erase := by
           rw [hndEq, ← hFde]
           exact Proofs.NamedWire.erase_preceq hFdH
-        have hHsrc : H ∈ (NamedRun.stateBeforeTime S rho (S.a k) w).st.bodies := by
-          rw [← hieq]; exact hH
-        obtain ⟨hHeldD, hstampD, -⟩ := NamedHealthyHeadReady.healthy_head_body_at_read
-          S rho core cap healthy w hw v hv H (S.a k) (S.a k + S.E.Δ) (S.a k + S.E.Δ)
-          hHsrc (le_refl _) (le_refl _) hcapk hFtimeD
+        obtain ⟨hHeldD, hstampD, -⟩ := NamedHealthyHeadReady.healthy_head_body_at_read_of_event
+          S rho core cap healthy w hw v hv H ((S.node w).act k) ((S.node w).act k + S.E.Δ) ((S.node w).act k + S.E.Δ)
+          i (.tick w ((S.node w).act k)) hie rfl hH (le_refl _) (le_refl _) hcapk hFtimeD
         have hHmemNd : H ∈ (NamedRun.stateBefore S rho nd v).st.bodies := by
           rw [← hndEq]; exact hHeldD
         have hNdStamped : stampedBefore
             (NamedRun.stateBefore S rho nd v).st.core.timestamp_block
-            (S.a k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
+            ((S.node w).act k + S.E.Δ) H.erase = true := by rw [hndEq] at hstampD; exact hstampD
         have hNd := hStampedMono _ _ hNdStamped
         obtain ⟨-, hstampEq⟩ :=
           NamedBlockStamp.stateBefore_body_stamp_mono S rho v hndj hHmemNd
@@ -218,17 +261,12 @@ theorem capture_ready_token
     have hjeq : NamedRun.stateBefore S rho j v =
         NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) v :=
       Proofs.NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hje
-    have hieq : NamedRun.stateBefore S rho i w =
-        NamedRun.stateBeforeTime S rho (S.a k) w :=
-      Proofs.NamedRuntime.tick_prefix_eq_strict S rho core.sorted core.nodup hie
-    have hHsrc : H ∈ (NamedRun.stateBeforeTime S rho (S.a k) w).st.bodies := by
-      rw [← hieq]; exact hH
     have hFtime : Block.Preceq
         (NamedRun.stateBeforeTime S rho (domain S.E S.hc r .g2) v).st.core.F H.erase := by
       rw [← hjeq]; exact hF
-    obtain ⟨-, hstampT, hlookupT⟩ := NamedHealthyHeadReady.healthy_head_body_at_read
-      S rho core cap healthy w hw v hv H (S.a k) (early S.E S.hc r .g2)
-      (domain S.E S.hc r .g2) hHsrc hdead hearlylt.le (hearlylt.le.trans hcapd) hFtime
+    obtain ⟨-, hstampT, hlookupT⟩ := NamedHealthyHeadReady.healthy_head_body_at_read_of_event
+      S rho core cap healthy w hw v hv H ((S.node w).act k) (early S.E S.hc r .g2)
+      (domain S.E S.hc r .g2) i (.tick w ((S.node w).act k)) hie rfl hH hdead hearlylt.le (hearlylt.le.trans hcapd) hFtime
     have hstamp : stampedBefore (NamedRun.stateBefore S rho j v).st.core.timestamp_block
         (early S.E S.hc r .g2) H.erase = true := by rw [hjeq]; exact hstampT
     have hlookup : Block.find? (NamedRun.stateBefore S rho j v).st.core.T H.root =

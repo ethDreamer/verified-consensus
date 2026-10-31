@@ -354,12 +354,12 @@ theorem relativePositive_of_cleanActionRead
         (rho.storeBeforeTime S w (domain S.E S.hc (r + 1) .g2)).toHealing.sg_votes k := by
       simpa only [gv, n, relativeG2Read, Run.storeBeforeTime,
         Protocol.HealingStore.gradeView, Protocol.Store.toHealing] using hzk
-    have hzEq : z = actionSGVoteAt S rho v k :=
+    have hzEq : z = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase :=
       honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime
         (k := k) S adm hv hzkStore hzraw.2.1
     have hzround : z.round = k := by
       rw [hzEq]
-      exact (actionSGVoteAt_shape S rho v k).2.1
+      exact WindowAction.actionRead_round S v _ k
     change z.round ≤ r
     rw [hzround]
     exact Nat.le_of_lt_succ hklt
@@ -381,22 +381,22 @@ theorem relativePositive_of_cleanActionRead
         (rho.storeBeforeTime S w (domain S.E S.hc (r + 1) .g2)).toHealing.sg_votes ky := by
       simpa only [gv, n, relativeG2Read, Run.storeBeforeTime,
         Protocol.HealingStore.gradeView, Protocol.Store.toHealing] using hypool
-    have hxEq : xv = actionSGVoteAt S rho v kx :=
+    have hxEq : xv = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v kx).erase :=
       honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime
         (k := kx) S adm hv hxStore hxdata.2.1
-    have hyEq : yv = actionSGVoteAt S rho v ky :=
+    have hyEq : yv = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v ky).erase :=
       honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime
         (k := ky) S adm hv hyStore hydata.2.1
     have hxround : xv.round = kx := by
       rw [hxEq]
-      exact (actionSGVoteAt_shape S rho v kx).2.1
+      exact WindowAction.actionRead_round S v _ kx
     have hyround : yv.round = ky := by
       rw [hyEq]
-      exact (actionSGVoteAt_shape S rho v ky).2.1
+      exact WindowAction.actionRead_round S v _ ky
     change xv.round = yv.round at hxy
     have hkyx : ky = kx := hyround.symm.trans (hxy.symm.trans hxround)
     subst ky
-    have hyEq' : yv = actionSGVoteAt S rho v kx := by
+    have hyEq' : yv = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v kx).erase := by
       simpa only [hkyx] using hyEq
     have hvote : xv = yv := hxEq.trans hyEq'.symm
     exact congrArg (fun z => (DecoupledConsensusModel.Protocol.token z).key) hvote
@@ -416,7 +416,7 @@ theorem relativePositive_of_cleanActionRead
       S adm hv hzkStore hzraw.2.1
     have hzround : z.round = k := by
       rw [hzEq]
-      exact (actionSGVoteAt_shape S rho v k).2.1
+      exact WindowAction.actionRead_round S v _ k
     change r < z.round at hlt
     rw [hzround] at hlt
     exfalso
@@ -439,6 +439,20 @@ theorem relativeOpposingNotHonest_of_cleanActionRead
   have hinterp : actionSGVoteAt S rho v r ∈
       DecoupledConsensusModel.Protocol.interpretedInputs gv F S.hc.η_SG (r + 1) early v := by
     simpa only [n, gv, F, early] using hmain.1
+  have hmainEq : actionSGVoteAt S rho v r =
+      Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v r).erase := by
+    obtain ⟨k, _, hpool⟩ := Finset.mem_biUnion.mp
+      (Finset.mem_filter.mp (Finset.mem_filter.mp hinterp).1).1
+    have hpoolStore : actionSGVoteAt S rho v r ∈
+        (rho.storeBeforeTime S w (domain S.E S.hc (r + 1) .g2)).toHealing.sg_votes k := by
+      simpa only [gv, n, relativeG2Read, Run.storeBeforeTime,
+        Protocol.HealingStore.gradeView, Protocol.Store.toHealing] using hpool
+    have heq := honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime S adm hv
+      hpoolStore (actionSGVoteAt_shape S rho v r).1
+    have hk : r = k := by
+      calc r = (actionSGVoteAt S rho v r).round := (actionSGVoteAt_shape S rho v r).2.1.symm
+           _ = k := by rw [heq]; exact WindowAction.actionRead_round S v _ k
+    simpa only [← hk] using heq
   have hcover : DecoupledConsensusModel.Protocol.localCovers gv
       (actionSGVoteAt S rho v r).confirmed P = true := by
     simpa only [n, gv, F, early] using hmain.2
@@ -459,12 +473,12 @@ theorem relativeOpposingNotHonest_of_cleanActionRead
         (rho.storeBeforeTime S w (domain S.E S.hc (r + 1) .g2)).toHealing.sg_votes k := by
       simpa only [gv, n, relativeG2Read, Run.storeBeforeTime,
         Protocol.HealingStore.gradeView, Protocol.Store.toHealing] using hzk
-    have hzEq : z = actionSGVoteAt S rho v k :=
+    have hzEq : z = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase :=
       honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime
         (k := k) S adm hv hzkStore hzraw.2.1
     have hzround : z.round = k := by
       rw [hzEq]
-      exact (actionSGVoteAt_shape S rho v k).2.1
+      exact WindowAction.actionRead_round S v _ k
     have htoken : DecoupledConsensusModel.Protocol.token (actionSGVoteAt S rho v r) ∈
         DecoupledConsensusModel.Protocol.readyView gv F S.hc.η_SG (r + 1) early v :=
       Finset.mem_image_of_mem DecoupledConsensusModel.Protocol.token hinterp
@@ -481,8 +495,8 @@ theorem relativeOpposingNotHonest_of_cleanActionRead
     have hkEq : k = r := Nat.le_antisymm hk_le hr_le
     have hzEqR : z = actionSGVoteAt S rho v r := by
       calc
-        z = actionSGVoteAt S rho v k := hzEq
-        _ = actionSGVoteAt S rho v r := by rw [hkEq]
+        z = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v k).erase := hzEq
+        _ = actionSGVoteAt S rho v r := by rw [hkEq]; exact hmainEq.symm
     apply hnot
     simpa only [DecoupledConsensusModel.Protocol.token] using
       (hzEqR ▸ hcover)
@@ -501,21 +515,21 @@ theorem relativeOpposingNotHonest_of_cleanActionRead
         (rho.storeBeforeTime S w (domain S.E S.hc (r + 1) .g2)).toHealing.sg_votes ky := by
       simpa only [gv, n, relativeG2Read, Run.storeBeforeTime,
         Protocol.HealingStore.gradeView, Protocol.Store.toHealing] using hypool
-    have hxEq : xv = actionSGVoteAt S rho v kx :=
+    have hxEq : xv = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v kx).erase :=
       honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime
         (k := kx) S adm hv hxStore hxdata.2.1
-    have hyEq : yv = actionSGVoteAt S rho v ky :=
+    have hyEq : yv = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v ky).erase :=
       honestSGVote_eq_actionSGVoteAt_of_mem_storeBeforeTime
         (k := ky) S adm hv hyStore hydata.2.1
     have hxround : xv.round = kx := by
       rw [hxEq]
-      exact (actionSGVoteAt_shape S rho v kx).2.1
+      exact WindowAction.actionRead_round S v _ kx
     have hyround : yv.round = ky := by
       rw [hyEq]
-      exact (actionSGVoteAt_shape S rho v ky).2.1
+      exact WindowAction.actionRead_round S v _ ky
     change xv.round = yv.round at hround
     have hkyx : ky = kx := hyround.symm.trans (hround.symm.trans hxround)
-    have hyEq' : yv = actionSGVoteAt S rho v kx := by
+    have hyEq' : yv = Protocol.sgVote (NamedActionReads.windowActionAttestationAt S rho v kx).erase := by
       simpa only [hkyx] using hyEq
     exact hkey (congrArg (fun z => (DecoupledConsensusModel.Protocol.token z).key)
       (hxEq.trans hyEq'.symm))

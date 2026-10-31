@@ -181,6 +181,70 @@ theorem g1_capture_at_action_read (S : Setup V) (rho : NamedRun V)
     refine ⟨j, raw, hj, he, hraw, ?_⟩
     exact Block.preceq_trans hrootold (by rw [← hclip]; exact clip_preceq' raw _)
 
+private theorem prepared_g1_from_old_window (S : Setup V) (v : V) (before : NamedNodeState V) (s : Round) :
+    (cacheAtRound (preparedCache S before ((S.node v).act s)) s).g1 =
+      clipResult before.st.core.F (cacheAtRound before.cache s).g1 := by
+  let aligned := alignRound before.cache s
+  have hcurrent : aligned.current = cacheAtRound before.cache s := (align_current' before.cache s).1
+  have hround : aligned.round = s := (align_current' before.cache s).2
+  have htime : (S.node v).act s ≠ domain S.E S.hc s .g1 := ne_of_gt (lt_of_lt_of_le
+    (by have hd := S.E.Δ_pos
+        simp only [domain, Phase.domainOffset]
+        linarith : domain S.E S.hc s .g1 < domain S.E S.hc s .g0)
+    (S.act_post_completion v s))
+  unfold preparedCache NamedActionReads.preparedCache onPhaseTick
+  rw [S.act_round v s]
+  change (cacheAtRound (clipCache before.st.core.F
+    ⟨aligned.round,
+      completeFrame S.E S.hc before.st.core.toHealing aligned.round ((S.node v).act s) aligned.current,
+      completeFrame S.E S.hc before.st.core.toHealing (aligned.round + 1) ((S.node v).act s)
+        aligned.next⟩) s).g1 = _
+  simp only [cacheAtRound, clipCache, hround]
+  change clipResult before.st.core.F
+    (completeFrame S.E S.hc before.st.core.toHealing s ((S.node v).act s) aligned.current).g1 = _
+  rw [complete_frame_g1' S.E S.hc before.st.core.toHealing s ((S.node v).act s) aligned.current htime,
+    hcurrent]
+  rfl
+
+/-- The g1 twin of `q2_capture_at_action_read`: the raw `frame.g1` root this
+validator's own action read holds is below a G1 root it froze at its own
+strictly earlier G1-domain tick. No `activePrefix` step: `anchor` applies that
+separately, outside `frame.g1`. -/
+theorem g1_capture_at_window_read (S : Setup V) (rho : NamedRun V)
+    (i : Nat) (v : V) (r : Round) {root : Block V}
+    (hg1 : (DecoupledConsensusModel.Protocol.readFrame
+        (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).cache
+        (NamedActionReads.windowActionReadFrom S v (NamedRun.stateBefore S rho i v) r).st.core.toHealing r).g1 =
+      some (some root)) :
+    ∃ (j : Nat) (raw : Block V),
+      j < i ∧
+      rho.events[j]? = some (.tick v (domain S.E S.hc r .g1)) ∧
+      freezeRoot S.E (NamedRun.stateBefore S rho j v).st.core.toHealing.gradeView
+        (NamedRun.stateBefore S rho j v).st.core.F S.hc.η_SG r
+        (early S.E S.hc r .g1) (late S.E S.hc r .g1) = some raw ∧
+      Block.Preceq root raw := by
+  set before := NamedRun.stateBefore S rho i v with hbefore
+  set n := NamedActionReads.windowActionReadFrom S v before r with hn
+  change clipResult n.st.core.F (cacheAtRound n.cache r).g1 = some (some root) at hg1
+  obtain ⟨prepared, hprepared, hrootprep⟩ :=
+    clip_result_prefix' n.st.core.F root root _ hg1 (Block.preceq_self root)
+  change (cacheAtRound (preparedCache S before ((S.node v).act r)) r).g1 = some (some prepared) at hprepared
+  rw [prepared_g1_from_old_window S v before r] at hprepared
+  obtain ⟨old, hold, hrootold⟩ :=
+    clip_result_prefix' before.st.core.F root prepared _ hprepared hrootprep
+  have hphase : phaseResult (cacheAtRound (NamedRun.stateBefore S rho i v).cache r) .g1 =
+      some (some old) := hold
+  rcases NamedCacheProvenance.completed_phase_origin S rho i v r .g1 (some old) hphase with
+    ⟨_, hzero⟩ | ⟨j, tt, hj, he, ht, hroot⟩
+  · exact absurd hzero (by simp)
+  · subst tt
+    obtain ⟨raw, hraw, hclip⟩ := Option.map_eq_some_iff.mp hroot.symm
+    refine ⟨j, raw, hj, he, hraw, ?_⟩
+    exact Block.preceq_trans hrootold (by rw [← hclip]; exact clip_preceq' raw _)
+
+
+#print axioms g1_capture_at_window_read
+
 /-! ## 4. B4/B5 for the g1 phase (mirrors `JointHistoryB4B5.lean`'s
 `capture_ready_token` and `graded_root_below_of_positive`, `.g2 →.g1`).
 `awake_window_row_head` and `honest_awake_emits` are already phase-free and are
@@ -192,11 +256,11 @@ reused verbatim. -/
 theorem healthy_emitted_sg_raw_at_index_g1
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
     (cap : Time) (healthy : NamedHealthyPrefixDelivery S rho cap)
-    {a : NamedAttestation V} (ha : a.val_index ∈ rho.honest)
-    (hem : NamedRun.emits S rho a.val_index (.attest a) (S.a a.round))
+    {a : NamedAttestation V} {sent : Time} (ha : a.val_index ∈ rho.honest)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) sent)
     (r : Round) (hwindow : a.round ∈ Protocol.latest_window S.hc.η_SG r)
-    (hearly : S.a a.round + S.E.Δ ≤ early S.E S.hc r .g1)
-    (hcap : S.a a.round + S.E.Δ ≤ cap)
+    (hearly : sent + S.E.Δ ≤ early S.E S.hc r .g1)
+    (hcap : sent + S.E.Δ ≤ cap)
     (reader : V) (hreader : reader ∈ rho.honest)
     (j : Nat) (e : NamedEvent V) (hj : rho.events[j]? = some e)
     (hjt : early S.E S.hc r .g1 ≤ e.time) :
@@ -204,9 +268,11 @@ theorem healthy_emitted_sg_raw_at_index_g1
       Protocol.sgVote a.erase ∈ DecoupledConsensusModel.Protocol.rawInputs
         (NamedRun.stateBefore S rho j reader).st.core.toHealing.gradeView
         S.hc.η_SG r (early S.E S.hc r .g1) a.val_index := by
+  have htime := (WindowAction.run_emission_fields S hem).1
+  subst sent
   obtain ⟨td, hlo, hhi, i, hcall⟩ :=
-    healthy.broadcast a.val_index ha (.attest a) (S.a a.round) hem reader hreader hcap rfl
-  have hpost := SGArrival.honest_row_after_call S rho
+    healthy.broadcast a.val_index ha (.attest a) ((S.node a.val_index).act a.round) hem reader hreader hcap rfl
+  have hpost := NamedSGArrival.honest_row_after_call S rho
     core.toNamedScheduleWellFormed core.toNamedUnforgeable ha hem hcall hlo hhi
   obtain ⟨e', he', _, het⟩ := hcall.2
   have hdata : SGArrival.Data td (NamedRun.stateBefore S rho (i + 1) reader).st := by
