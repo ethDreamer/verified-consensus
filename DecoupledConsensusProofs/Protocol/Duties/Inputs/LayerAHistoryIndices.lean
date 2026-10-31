@@ -2,23 +2,18 @@ module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Execution.PrefixThroughHistory
 public import DecoupledConsensusInternal.Definitions.NamedJointOutage
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowActionPoint
 
 @[expose] public section
 
 /-!
-# Index-bounded joint history 
+# Index-bounded joint history
 
-The renewal cannot be driven by time: the event key orders ticks before
-deliveries at one instant and authenticity is non-strict, so a row emitted
-at a tick can be delivered later in the same time group. The canonical
-history is therefore bounded by EVENT INDEX: the emission clauses (0), (1),
-(2) and the confirmation clause (4) range over tick indices `< n`, the
-finalized-prefix clause (3) over prefixes `≤ n`, with no time guard. The
-time-based `LayerAJointHistoryOn t` is recovered at group boundaries
-(`jointHistoryOn_of_idx`). Every consumer that took the time-based history
-with a strict time bound on the prefix takes the index form with `i ≤ n`;
-the provenance step uses that an emission's tick index precedes its
-acceptance index (`emission_index_lt_acceptance`).
+Emission clauses read actual action inputs and range over tick indices
+strictly before the boundary. Finalized prefixes range through the boundary.
+The point-recovery lemmas specialize every emission field to the paper clock.
+Confirmation and witness provenance still name their explicit paper reads
+(PROTOCOL.md `sec:healing-schedule`).
 -/
 
 
@@ -26,14 +21,18 @@ namespace DecoupledConsensusModel.Internal.NamedOutageEntry.History
 open Execution Protocol
 variable {V : Type} [DecidableEq V] [Fintype V]
 
-def LayerAHistoryIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
+/-- The emission clauses parameterized by their input observer and action
+clock (PROTOCOL.md `sec:healing-schedule`). -/
+def LayerAHistoryIdxUsing (S : Setup V) (rho : NamedRun V)
+    (read : V → NamedNodeState V → Round → NamedNodeState V)
+    (act : V → Round → Time) (n : Nat)
     (C : NamedBlock V) : Prop :=
   NamedRun.blockInRun S rho C ∧
     (∀ (i : Nat) (v : V) (ta : Time) (a : NamedAttestation V),
       v ∈ rho.honest → rho.events[i]? = some (.tick v ta) →
       NamedObject.attest a ∈ NamedRun.emittedAt S rho i v ta → i < n →
       ∀ fp : FinalityPair, a.finality_pair = some fp →
-        let n := actionReadFrom S (NamedRun.stateBefore S rho i v) a.round
+        let n := read v (NamedRun.stateBefore S rho i v) a.round
         let gc := NamedProfile.gradeContract n.cache
         let input := Protocol.NamedActions.creatorInput
           (Protocol.attestation_input_with gc S.E S.hc (S.node v) n.st.core.toHealing)
@@ -44,7 +43,7 @@ def LayerAHistoryIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
           NamedRun.blockInRun S rho H ∧ H ∈ n.st.bodies ∧ H.erase = head ∧
           NamedRun.blockInRun S rho K ∧ K ∈ n.st.bodies ∧
           K.erase = (n.st.core.σ H.erase).J ∧
-          a.val_index = v ∧ ta = S.a a.round ∧
+          a.val_index = v ∧ ta = act v a.round ∧
           a = (Protocol.NamedRecord.create n.record input).2 ∧
           fp.height = input.h_j ∧ fp.target = input.J ∧
           input.h_j = (n.st.core.σ H.erase).h_j ∧
@@ -56,14 +55,14 @@ def LayerAHistoryIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
       NamedObject.attest a ∈ NamedRun.emittedAt S rho i v ta → i < n →
       ∀ (h : Height) (T : BlockId) (timeout : Bool),
         a.height_pair = .vote h T timeout →
-        let n := actionReadFrom S (NamedRun.stateBefore S rho i v) a.round
+        let n := read v (NamedRun.stateBefore S rho i v) a.round
         let gc := NamedProfile.gradeContract n.cache
         let input := Protocol.NamedActions.creatorInput
           (Protocol.attestation_input_with gc S.E S.hc (S.node v) n.st.core.toHealing)
         ∃ source entry : NamedBlock V,
           NamedRun.blockInRun S rho source ∧ source ∈ n.st.bodies ∧
           NamedRun.blockInRun S rho entry ∧ entry ∈ n.st.bodies ∧
-          a.val_index = v ∧ ta = S.a a.round ∧
+          a.val_index = v ∧ ta = act v a.round ∧
           a = (Protocol.NamedRecord.create n.record input).2 ∧
           Protocol.fg_source_with gc S.E S.hc n.st.core.toHealing a.round
             (Protocol.grade2_block_with gc S.E S.hc n.st.core.toHealing a.round) =
@@ -84,15 +83,63 @@ def LayerAHistoryIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
         F.erase = (NamedRun.stateBefore S rho i v).st.core.F ∧
         NamedBlock.Preceq F C)
 
-def SGVoteIdx (S : Setup V) (rho : NamedRun V) (n : Nat) (C : NamedBlock V) : Prop :=
+/-- The SG emission field parameterized by its input observer
+(PROTOCOL.md `sec:healing-schedule`). -/
+def SGVoteIdxUsing (S : Setup V) (rho : NamedRun V)
+    (read : V → NamedNodeState V → Round → NamedNodeState V) (n : Nat) (C : NamedBlock V) : Prop :=
   ∀ (i : Nat) (v : V) (ta : Time) (a : NamedAttestation V),
     v ∈ rho.honest → rho.events[i]? = some (.tick v ta) →
     NamedObject.attest a ∈ NamedRun.emittedAt S rho i v ta → i < n →
     ∀ key : BlockId, a.confirmed = some key →
-      let n := actionReadFrom S (NamedRun.stateBefore S rho i v) a.round
+      let n := read v (NamedRun.stateBefore S rho i v) a.round
       ∃ K : NamedBlock V,
         NamedRun.blockInRun S rho K ∧ K ∈ n.st.bodies ∧ K.root = key ∧
         NamedBlock.Preceq K C
+
+/-- Honest emission history reads the actual pre-attestation input, including
+prior duties of the same tick (PROTOCOL.md `sec:healing-schedule`). -/
+def LayerAHistoryIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
+    (C : NamedBlock V) : Prop :=
+  LayerAHistoryIdxUsing S rho (NamedActionReads.windowActionReadFrom S)
+    (fun v => (S.node v).act) n C
+
+/-- SG rows name the selected head at their actual emission input
+(PROTOCOL.md `sec:healing-schedule`). -/
+def SGVoteIdx (S : Setup V) (rho : NamedRun V) (n : Nat) (C : NamedBlock V) : Prop :=
+  SGVoteIdxUsing S rho (NamedActionReads.windowActionReadFrom S) n C
+
+/-- The point schedule recovers every original emission-history field
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem layerAHistoryIdx_point (S : Setup V) (rho : NamedRun V) (n : Nat)
+    (C : NamedBlock V) (hpoint : ∀ v r, (S.node v).act r = S.a r) :
+    LayerAHistoryIdx S rho n C ↔
+      LayerAHistoryIdxUsing S rho (fun _ => actionReadFrom S) (fun _ => S.a) n C := by
+  have hread : NamedActionReads.windowActionReadFrom S =
+      (fun _ => actionReadFrom S) := by
+    funext v before r
+    simp only [NamedActionReads.windowActionReadFrom, hpoint,
+      Proofs.WindowAction.windowReadFrom_point]
+    rfl
+  have hact : (fun v => (S.node v).act) = (fun _ => S.a) := by
+    funext v r
+    exact hpoint v r
+  simp only [LayerAHistoryIdx, hread, hact]
+
+/-- The point schedule recovers the original SG emission-history field
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem sgVoteIdx_point (S : Setup V) (rho : NamedRun V) (n : Nat)
+    (C : NamedBlock V) (hpoint : ∀ v r, (S.node v).act r = S.a r) :
+    SGVoteIdx S rho n C ↔ SGVoteIdxUsing S rho (fun _ => actionReadFrom S) n C := by
+  have hread : NamedActionReads.windowActionReadFrom S =
+      (fun _ => actionReadFrom S) := by
+    funext v before r
+    simp only [NamedActionReads.windowActionReadFrom, hpoint,
+      Proofs.WindowAction.windowReadFrom_point]
+    rfl
+  simp only [SGVoteIdx, hread]
+
+#print axioms layerAHistoryIdx_point
+#print axioms sgVoteIdx_point
 
 def ConfirmationIdx (S : Setup V) (rho : NamedRun V) (n : Nat)
     (C : NamedBlock V) : Prop :=

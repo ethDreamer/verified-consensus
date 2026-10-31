@@ -40,6 +40,53 @@ theorem row_emission_index_lt_block_acceptance
     subst htime
     exact tick_lt_of_deliver_index rho core.sorted hji hk hsend
 
+/-- A held honest SG row was emitted inside the strict event prefix,
+including self-admission at its own tick (PROTOCOL.md#on_attestation). -/
+theorem held_row_emission_before (S : Setup V) (rho : NamedRun V)
+    (core : NamedAdmissibleCore S rho) (n : Nat) (v : V)
+    {a : NamedAttestation V}
+    (hrow : a ∈ (NamedRun.stateBefore S rho n v).st.sg_rows a.round)
+    (ha : a.val_index ∈ rho.honest) :
+    ∃ i, i < n ∧
+      rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)) ∧
+      NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+        ((S.node a.val_index).act a.round) := by
+  obtain ⟨j, hj, received, hacc, hsend, k, hk, hem⟩ :=
+    NamedOutageProvenance.honest_held_row_emission S rho core.toNamedUnforgeable n v hrow ha
+  obtain ⟨hcall, e, he, _, het⟩ := hacc.1
+  rcases hcall with (⟨time, htick, hself⟩ | ⟨time, hdeliver⟩) |
+    ⟨B, pos, before, hblock, _, _, hmember⟩
+  · have hfields := WindowAction.run_emission_fields S ⟨j, htick, hself⟩
+    have hsame : rho.events[j]? = some
+        (.tick a.val_index ((S.node a.val_index).act a.round)) := by
+      simpa only [hfields.2.2, hfields.1] using htick
+    have hkj : k = j :=
+      (List.Nodup.getElem?_inj (List.getElem?_eq_some_iff.mp hk).1 core.nodup).mp
+        (hk.trans hsame.symm)
+    exact ⟨k, hkj ▸ hj, hk, hem⟩
+  · have heq : NamedEvent.deliver v (.attest a) time = e :=
+      Option.some.inj (hdeliver.symm.trans he)
+    have htime : time = received := by
+      simpa only [NamedEvent.time] using (congrArg NamedEvent.time heq).trans het
+    subst htime
+    exact ⟨k, (tick_lt_of_deliver_index rho core.sorted hdeliver hk hsend).trans hj, hk, hem⟩
+
+  · have hmem : a ∈ B.attestations := List.mem_of_getElem? hmember
+    rcases hblock with ⟨time, hdeliver, _⟩ | ⟨time, htick, hblockemit, _⟩
+    · have heq : NamedEvent.deliver v (.block B) time = e :=
+        Option.some.inj (hdeliver.symm.trans he)
+      have htime : time = received := by
+        simpa only [NamedEvent.time] using (congrArg NamedEvent.time heq).trans het
+      subst htime
+      exact ⟨k, (tick_lt_of_deliver_index rho core.sorted hdeliver hk hsend).trans hj,
+        hk, hem⟩
+    · have heq : NamedEvent.tick v time = e := Option.some.inj (htick.symm.trans he)
+      have htime : time = received := by
+        simpa only [NamedEvent.time] using (congrArg NamedEvent.time heq).trans het
+      subst htime
+      exact ⟨k, (emission_index_lt_self_proposed_carrier S rho core j v time B
+        htick hblockemit a hmem ha k _ hk hem hsend).trans hj, hk, hem⟩
+
 /-- All ancestral honest rows in a body held after event `j` were emitted
 strictly before `j`. This also covers bodies retained from earlier events. -/
 theorem held_carrier_rows_before (S : Setup V) (rho : NamedRun V)
@@ -63,6 +110,7 @@ theorem accepted_carrier_rows_before (S : Setup V) (rho : NamedRun V)
   apply held_carrier_rows_before S rho core j v
   simpa only [NamedReceipt.processed, decide_eq_true_eq] using hacc.2.2
 
+#print axioms held_row_emission_before
 #print axioms row_emission_index_lt_block_acceptance
 #print axioms held_carrier_rows_before
 #print axioms accepted_carrier_rows_before

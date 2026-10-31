@@ -7,6 +7,7 @@ public import DecoupledConsensusProofs.Execution.ViabilityHistoryIndices
 public import DecoupledConsensusProofs.Protocol.Handlers.PrefixCarrier
 public import DecoupledConsensusProofs.Protocol.ChainState.JustificationCertificates
 public import DecoupledConsensusProofs.Execution.OutageProvenance
+public import DecoupledConsensusProofs.Protocol.Duties.Inputs.WindowIntrinsicEntry
 public import DecoupledConsensusProofs.Protocol.Handlers.ReceiptCallsGF
 public import DecoupledConsensusProofs.Protocol.Handlers.FinalizationBridge
 public import DecoupledConsensusProofs.Protocol.ChainState.FinalityCertificates
@@ -113,7 +114,7 @@ theorem justification_on_history_chain
     obtain ⟨source, entry, hsourceScope, hsourceHeld, hentryScope, hentryHeld,
       hval, htime, hcreate, hselector, hfields, hheight, htarget, herase,
       hancestor, hsameHeight, hroot, hentryC⟩ :=
-      hhistory.2.2.1 k a.val_index (S.a a.round) a ha hk hemit hkn
+      hhistory.2.2.1 k a.val_index ((S.node a.val_index).act a.round) a ha hk hemit hkn
         (derive_named S.E S.cfg D).h_j J.root false hp
     have heq : entry = J := core.root_injective C D hhistory.1 hDscope
       entry J (Or.inl hentryC) (Or.inr hJD) hroot
@@ -135,24 +136,24 @@ theorem justification_honest_fgRow
     (NamedRun.stateBefore S rho i v).st.core.J = Block.genesis ∨
     ∃ (k : Nat) (a : NamedAttestation V) (J source : NamedBlock V),
       a.val_index ∈ rho.honest ∧ k < i ∧
-      rho.events[k]? = some (.tick a.val_index (S.a a.round)) ∧
-      NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index (S.a a.round) ∧
+      rho.events[k]? = some (.tick a.val_index ((S.node a.val_index).act a.round)) ∧
+      NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index ((S.node a.val_index).act a.round) ∧
       NamedRun.blockInRun S rho J ∧
       J.erase = (NamedRun.stateBefore S rho i v).st.core.J ∧
       NamedBlock.Preceq J C ∧
       Protocol.fg_source_with
         (NamedProfile.gradeContract
-          (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
+          (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
         S.E S.hc
-        (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
+        (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
         a.round
         (Protocol.grade2_block_with
           (NamedProfile.gradeContract
-            (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
+            (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
           S.E S.hc
-          (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
+          (NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
           a.round) = some source.erase ∧
-      J.erase = ((Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.σ
+      J.erase = ((NamedActionReads.windowActionReadFrom S a.val_index (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.σ
         source.erase).T_h := by
   obtain ⟨D, hD, hDJ, hDh⟩ :=
     PrefixCarrier.justification_carrier_stateBefore S rho i v
@@ -179,7 +180,7 @@ theorem justification_honest_fgRow
     obtain ⟨source, entry, hsourceScope, hsourceHeld, hentryScope, hentryHeld,
       hval, htime, hcreate, hselector, hfields, hheight, htarget, herase,
       hancestor, hsameHeight, hroot, hentryC⟩ :=
-      hhistory.2.2.1 k a.val_index (S.a a.round) a ha hk hemit hkn
+      hhistory.2.2.1 k a.val_index ((S.node a.val_index).act a.round) a ha hk hemit hkn
         (derive_named S.E S.cfg D).h_j J.root false hp
     have heq : entry = J := core.root_injective C D hhistory.1 hDscope
       entry J (Or.inl hentryC) (Or.inr hJD) hroot
@@ -199,7 +200,7 @@ theorem honest_held_ancestor_row_before_time
     (hB : B ∈ (NamedRun.stateBeforeTime S rho t reader).st.bodies)
     (hAB : NamedBlock.Preceq A B) (ha : a ∈ A.attestations)
     (hHon : a.val_index ∈ rho.honest) :
-    S.a a.round < t ∧ NamedRun.emits S rho a.val_index (.attest a) (S.a a.round) := by
+    (S.node a.val_index).act a.round < t ∧ NamedRun.emits S rho a.val_index (.attest a) ((S.node a.val_index).act a.round) := by
   obtain ⟨i, hread, hbefore⟩ :=
     Proofs.NamedRuntime.stateBeforeTime_eq_prefix S rho sch.sorted t
   rw [hread] at hB
@@ -216,6 +217,144 @@ block, and that block's own justification certificate names an honest FG row
 carried below that head. Same output shape as `justification_honest_fgRow`. -/
 theorem finalized_honest_fgRow
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
+    (n : Nat) (C : NamedBlock V)
+    (hhistory : LayerAHistoryIdx S rho n C)
+    (i : Nat) (v : V) (hv : v ∈ rho.honest) (hi : i ≤ n)
+    (hbad : S.E.electorate.weightOf (Finset.univ \ rho.honest) < S.E.q) :
+    (NamedRun.stateBefore S rho i v).st.core.F = Block.genesis ∨
+    ∃ (k : Nat) (a : NamedAttestation V) (J source : NamedBlock V),
+      a.val_index ∈ rho.honest ∧ k < i ∧
+      rho.events[k]? = some (.tick a.val_index ((S.node a.val_index).act a.round)) ∧
+      NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index ((S.node a.val_index).act a.round) ∧
+      NamedRun.blockInRun S rho J ∧
+      J.erase = (NamedRun.stateBefore S rho i v).st.core.F ∧
+      NamedBlock.Preceq J C ∧
+      Protocol.fg_source_with
+        (NamedProfile.gradeContract
+          (NamedActionReads.windowActionReadFrom S a.val_index
+            (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
+        S.E S.hc
+        (NamedActionReads.windowActionReadFrom S a.val_index
+          (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
+        a.round
+        (Protocol.grade2_block_with
+          (NamedProfile.gradeContract
+            (NamedActionReads.windowActionReadFrom S a.val_index
+              (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
+          S.E S.hc
+          (NamedActionReads.windowActionReadFrom S a.val_index
+            (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
+          a.round) = some source.erase ∧
+      J.erase = ((NamedActionReads.windowActionReadFrom S a.val_index
+        (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.σ
+        source.erase).T_h ∧
+      ∃ (ka : Nat) (xa : V) (ra : Round), ka < i ∧
+        rho.events[ka]? = some (.tick xa ((S.node xa).act ra)) ∧ k < ka := by
+  obtain ⟨D, hD, hDF, -⟩ :=
+    NamedFinalizationBridge.finalization_carrier_stateBefore S rho i v
+  have hDscope := Proofs.NamedRuntime.blockInRun_of_direct S rho
+    (Proofs.NamedRuntime.directBlock_of_prefix S rho hv i hD)
+  by_cases hzF : (derive_named S.E S.cfg D).h_F = 0
+  · exact Or.inl (hDF.symm.trans
+      (NamedFinalityCertificates.finalized_zero_is_genesis S.E S.cfg D hzF))
+  obtain ⟨Fn, hFD, hFE, Q, hQ, hrows⟩ :=
+    NamedFinalityCertificates.finality_certificate S.E S.cfg D hzF
+  obtain ⟨signer, hsQ, hsHon⟩ := quorum_honest_member S rho Q hQ hbad
+  obtain ⟨carrier, a, hcarrier, hrow, hsigner, hp⟩ := hrows signer hsQ
+  have ha : a.val_index ∈ rho.honest := by simpa only [hsigner] using hsHon
+  obtain ⟨j, hj, received, hacc, hsend, hem⟩ :=
+    NamedOutageProvenance.honest_held_ancestor_row_emission S rho
+      core.toNamedUnforgeable i v hD hcarrier hrow ha
+  obtain ⟨k, hk, hemit⟩ := hem
+  have hkj : k ≤ j :=
+    row_emission_index_le_block_acceptance S rho core v carrier j received hacc
+      a hrow ha k hk hemit hsend
+  have hki : k < i := lt_of_le_of_lt hkj hj
+  have hkn : k < n := lt_of_lt_of_le hki hi
+  obtain ⟨H, K, hHrun, hHbody, -, hKrun, hKbody, hKerase, -, -, -, -, -, -, -, -,
+      hKroot, hKC⟩ :=
+    hhistory.2.1 k a.val_index ((S.node a.val_index).act a.round) a ha hk hemit hkn
+      ⟨(derive_named S.E S.cfg D).h_F, Fn.root⟩ hp
+  have hKF : K = Fn := core.root_injective C D hhistory.1 hDscope
+    K Fn (Or.inl hKC) (Or.inr hFD) hKroot.symm
+  subst hKF
+  have hpost := (NamedWindowIntrinsicEntry.emission_post_projection S rho hk hemit).1
+  have hHk : H ∈ (NamedRun.stateBefore S rho (k + 1) a.val_index).st.bodies := by
+    rw [hpost]
+    exact hHbody
+  have hcoh := (WindowAction.windowRead_invariant S a.val_index
+    (NamedRun.stateBefore S rho k a.val_index) ((S.node a.val_index).act a.round)
+    (Proofs.NamedRuntime.stateBefore_invariants S rho k a.val_index).1).1.1
+  have hσ : (NamedActionReads.windowActionReadFrom S a.val_index
+      (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.σ H.erase =
+        derive_named S.E S.cfg H := hcoh.2.2.2.2 H hHbody
+  have hJH : (derive_named S.E S.cfg H).J = (NamedRun.stateBefore S rho i v).st.core.F := by
+    rw [← hσ, ← hKerase, hFE, hDF]
+  by_cases hzJ : (derive_named S.E S.cfg H).h_j = 0
+  · exact Or.inl (hJH.symm.trans
+      (NamedJustificationCertificates.justified_zero_is_genesis S.E S.cfg H hzJ))
+  obtain ⟨J, hJH', hJE, Q', hQ', hrows'⟩ :=
+    NamedJustificationCertificates.justification_certificate S.E S.cfg H hzJ
+  obtain ⟨signer', hsQ', hsHon'⟩ := quorum_honest_member S rho Q' hQ' hbad
+  obtain ⟨carrier', a', hcarrier', hrow', hsigner', hp'⟩ := hrows' signer' hsQ'
+  have ha' : a'.val_index ∈ rho.honest := by simpa only [hsigner'] using hsHon'
+  obtain ⟨k', hk'k, hk', hemit'⟩ :=
+    NamedCausalCarrierHistory.held_carrier_rows_before S rho core k a.val_index hHk
+      carrier' hcarrier' a' hrow' ha'
+  have hk'i : k' < i := hk'k.trans hki
+  have hk'n : k' < n := hk'i.trans_le hi
+  obtain ⟨source, entry, hsourceScope, hsourceHeld, hentryScope, hentryHeld,
+      hval, htime, hcreate, hselector, hfields, hheight, htarget, herase,
+      hancestor, hsameHeight, hroot, hentryC⟩ :=
+    hhistory.2.2.1 k' a'.val_index ((S.node a'.val_index).act a'.round) a' ha' hk' hemit' hk'n
+      (derive_named S.E S.cfg H).h_j J.root false hp'
+  have heq : entry = J := core.root_injective C H hhistory.1 hHrun
+    entry J (Or.inl hentryC) (Or.inr hJH') hroot
+  subst heq
+  exact Or.inr ⟨k', a', entry, source, ha', hk'i, hk', hemit',
+    Proofs.NamedRuntime.blockInRun_of_ancestor S rho hHrun hJH',
+    hJE.trans hJH, hentryC, hselector, herase, k, a.val_index, a.round, hki, hk, hk'k⟩
+
+/-- The point schedule recovers the original justified FG-row observer
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem justification_honest_fgRow_point
+    (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (n : Nat) (C : NamedBlock V)
+    (hhistory : LayerAHistoryIdx S rho n C)
+    (i : Nat) (v : V) (hv : v ∈ rho.honest) (hi : i ≤ n)
+    (hbad : S.E.electorate.weightOf (Finset.univ \ rho.honest) < S.E.q) :
+    (NamedRun.stateBefore S rho i v).st.core.J = Block.genesis ∨
+    ∃ (k : Nat) (a : NamedAttestation V) (J source : NamedBlock V),
+      a.val_index ∈ rho.honest ∧ k < i ∧
+      rho.events[k]? = some (.tick a.val_index (S.a a.round)) ∧
+      NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index (S.a a.round) ∧
+      NamedRun.blockInRun S rho J ∧
+      J.erase = (NamedRun.stateBefore S rho i v).st.core.J ∧
+      NamedBlock.Preceq J C ∧
+      Protocol.fg_source_with
+        (NamedProfile.gradeContract
+          (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
+        S.E S.hc
+        (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
+        a.round
+        (Protocol.grade2_block_with
+          (NamedProfile.gradeContract
+            (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).cache)
+          S.E S.hc
+          (Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.toHealing
+          a.round) = some source.erase ∧
+      J.erase = ((Internal.NamedOutageEntry.actionReadFrom S (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.σ
+        source.erase).T_h := by
+  simpa only [NamedActionReads.windowActionReadFrom, hpoint,
+    WindowAction.windowReadFrom_point, Internal.NamedOutageEntry.actionReadFrom] using!
+      justification_honest_fgRow S rho core n C hhistory i v hv hi hbad
+
+/-- The simultaneous schedule recovers the original strict-time finality
+source witness (PROTOCOL.md `sec:healing-schedule`). -/
+theorem finalized_honest_fgRow_point
+    (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
     (n : Nat) (C : NamedBlock V)
     (hhistory : LayerAHistoryIdx S rho n C)
     (i : Nat) (v : V) (hv : v ∈ rho.honest) (hi : i ≤ n)
@@ -249,6 +388,7 @@ theorem finalized_honest_fgRow
         source.erase).T_h ∧
       ∃ (ka : Nat) (xa : V) (ra : Round), ka < i ∧
         rho.events[ka]? = some (.tick xa (S.a ra)) ∧ S.a a.round < S.a ra := by
+  have hhistory := (layerAHistoryIdx_point S rho n C hpoint).mp hhistory
   obtain ⟨D, hD, hDF, -⟩ :=
     NamedFinalizationBridge.finalization_carrier_stateBefore S rho i v
   have hDscope := Proofs.NamedRuntime.blockInRun_of_direct S rho
@@ -265,6 +405,7 @@ theorem finalized_honest_fgRow
     NamedOutageProvenance.honest_held_ancestor_row_emission S rho
       core.toNamedUnforgeable i v hD hcarrier hrow ha
   obtain ⟨k, hk, hemit⟩ := hem
+  simp only [hpoint] at hk hemit hsend
   have hkj : k ≤ j :=
     row_emission_index_le_block_acceptance S rho core v carrier j received hacc
       a hrow ha k hk hemit hsend
@@ -298,6 +439,7 @@ theorem finalized_honest_fgRow
     NamedOutageProvenance.honest_held_ancestor_row_emission S rho
       core.toNamedUnforgeable k a.val_index hHk hcarrier' hrow' ha'
   obtain ⟨k', hk', hemit'⟩ := hem'
+  simp only [hpoint] at hk' hemit' hsend'
   have hk'j' : k' ≤ j' :=
     row_emission_index_le_block_acceptance S rho core a.val_index carrier' j' received'
       hacc' a' hrow' ha' k' hk' hemit' hsend'
@@ -318,12 +460,20 @@ theorem finalized_honest_fgRow
       Proofs.Optimistic.stateBefore_tick_eq_stateBeforeTime S core.toNamedScheduleWellFormed hk
     rw [← hst]
     exact hHk
-  have hlt : S.a a'.round < S.a a.round :=
-    (honest_held_ancestor_row_before_time S rho core.toNamedScheduleWellFormed
+  have hlt : S.a a'.round < S.a a.round := by
+    simpa only [hpoint] using (honest_held_ancestor_row_before_time S rho core.toNamedScheduleWellFormed
       core.toNamedUnforgeable a.val_index (S.a a.round) hHtime hcarrier' hrow' ha').1
   exact Or.inr ⟨k', a', entry, source, ha', hk'i, hk', hemit',
     Proofs.NamedRuntime.blockInRun_of_ancestor S rho hHrun hJH',
     hJE.trans hJH, hentryC, hselector, herase, k, a.val_index, a.round, hki, hk, hlt⟩
+
+#print axioms justification_honest_fgRow_point
+#print axioms finalized_honest_fgRow_point
+#print axioms justification_on_history_chain
+#print axioms justification_honest_fgRow
+#print axioms honest_held_ancestor_row_before_time
+#print axioms finalized_honest_fgRow
+
 
 
 end DecoupledConsensusModel.Proofs.NamedOutageHistory.HistoryProofs

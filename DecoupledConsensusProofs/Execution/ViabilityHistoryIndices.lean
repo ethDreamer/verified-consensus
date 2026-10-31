@@ -2,7 +2,7 @@ module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Protocol.Duties.Inputs.LayerAHistoryIndices
 public import DecoupledConsensusProofs.Execution.EventIndexBridge
-public import DecoupledConsensusProofs.Execution.IdxGaps
+public import DecoupledConsensusProofs.Execution.CausalCarrierHistory
 public import DecoupledConsensusProofs.Execution.ViabilityHistory
 public import DecoupledConsensusProofs.Protocol.ChainState.FinalityCertificates
 public import DecoupledConsensusProofs.Execution.OutageProvenance
@@ -10,23 +10,12 @@ public import DecoupledConsensusProofs.Execution.OutageProvenance
 @[expose] public section
 
 /-!
-# Index-bounded viability history (task 3)
+# Index-bounded viability history
 
-`held_finalized_on_history` and `held_crossing_on_history`, copied from
-`ViabilityHistory.lean` with the index hypotheses `(n: Nat)
-(hhistory: LayerAHistoryIdx S rho n C) (hi: i ≤ n)` in place of `(t: Time)
-(hhistory: LayerAHistoryOn S rho t C) (hstrict:...)`. `named_common_chain`,
-`named_extend`, `genesis_preceq`, `quorum_honest_member`, `ancestor_body_mem`
-are unchanged and reused from `ViabilityHistory.lean`.
-
-The provenance step gives an acceptance index `j < i` for the carrying block
-at the holder. When that acceptance is a delivery, the carried row's
-emission index is `< j` by task 1's `tick_lt_of_deliver_index`. When the
-holder instead self-proposed the carrying block (a self-tick acceptance),
-the same bound is recorded as a gap (`emission_index_le_self_proposed_carrier`
-in `IdxGaps.lean`): it is not closable from the tick-vs-deliver phase trick
-alone, since both ticks share phase 0. Either way `k ≤ j < i ≤ n` closes the
-index bound the history clause needs.
+A quorum crossing uses an honest signed row emitted strictly before its
+carrier acceptance, including self-proposals at the same time. The actual
+input history then places its entry on the history chain
+(PROTOCOL.md `sec:healing-schedule`).
 -/
 
 
@@ -37,33 +26,18 @@ open DecoupledConsensusModel.Proofs.NamedOutageHistory.ViabilityHistoryTime
 variable {V : Type} [DecidableEq V] [Fintype V]
 
 
-/-- The carried row's emission index sits at or before the carrying block's
-own acceptance index, whichever branch (self-tick or delivery) that
-acceptance took. Public: reused by the justification-history index migration
-(task 4, `JustificationHistoryIndices.lean`), which needs the same provenance step. -/
+/-- The causal carrier ordering also supplies the non-strict index bound
+used by retained-body consumers (PROTOCOL.md#on_block). -/
 theorem row_emission_index_le_block_acceptance
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
     (v : V) (carrier : NamedBlock V) (j : Nat) (received : Time)
     (hacc : NamedRun.acceptsAt S rho j v (.block carrier) received)
     (a : NamedAttestation V) (hrow : a ∈ carrier.attestations) (ha : a.val_index ∈ rho.honest)
-    (k : Nat) (hk : rho.events[k]? = some (.tick a.val_index (S.a a.round)))
-    (hemit : NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index (S.a a.round))
-    (hsend : S.a a.round ≤ received) : k ≤ j := by
-  obtain ⟨hcallIdx, e, he, _, het⟩ := hacc.1
-  change NamedRun.processesAtIndex S rho j v (.block carrier) at hcallIdx
-  rcases hcallIdx with ⟨time, hji, hemC⟩ | ⟨time, hji⟩
-  · have heq : NamedEvent.tick v time = e := Option.some.inj (hji.symm.trans he)
-    have htime : time = received := by
-      simpa only [NamedEvent.time] using (congrArg NamedEvent.time heq).trans het
-    subst htime
-    exact emission_index_le_self_proposed_carrier S rho core j v time carrier
-      hji hemC a hrow ha k _ hk hemit hsend
-  · have heq : NamedEvent.deliver v (.block carrier) time = e :=
-      Option.some.inj (hji.symm.trans he)
-    have htime : time = received := by
-      simpa only [NamedEvent.time] using (congrArg NamedEvent.time heq).trans het
-    subst htime
-    exact (tick_lt_of_deliver_index rho core.sorted hji hk hsend).le
+    (k : Nat) {sent : Time} (hk : rho.events[k]? = some (.tick a.val_index sent))
+    (hemit : NamedObject.attest a ∈ NamedRun.emittedAt S rho k a.val_index sent)
+    (hsend : sent ≤ received) : k ≤ j :=
+  (NamedCausalCarrierHistory.row_emission_index_lt_block_acceptance
+    S rho core v carrier j received hacc a hrow ha k sent hk hemit hsend).le
 
 
 /-- The exact progress crossing, with either timeout flag, is on the history
@@ -104,7 +78,7 @@ theorem held_crossing_on_history
   obtain ⟨source, entry, hsourceScope, hsourceHeld, hentryScope, hentryHeld,
     hval, htime, hcreate, hselector, hfields, hheight, htarget, herase,
     hancestor, hsameHeight, hroot, hentryC⟩ :=
-    hhistory.2.2.1 k a.val_index (S.a a.round) a ha hk hemit hkn
+    hhistory.2.2.1 k a.val_index ((S.node a.val_index).act a.round) a ha hk hemit hkn
       h X.root timeout hvote
   have heq : entry = X := core.root_injective C D hhistory.1 hDscope
     entry X (Or.inl hentryC) (Or.inr hXD) hroot

@@ -7,6 +7,7 @@ public import DecoupledConsensusProofs.Protocol.Handlers.StoreBridge
 public import DecoupledConsensusProofs.Execution.BridgesTail
 public import DecoupledConsensusProofs.Protocol.ValidatorClient.BlockEmission
 public import DecoupledConsensusProofs.Execution.FGSelectorWitness
+public import DecoupledConsensusProofs.Execution.CausalCarrierHistory
 public import DecoupledConsensusProofs.Protocol.ChainState.RecoveryCrossingCore
 public import DecoupledConsensusProofs.Protocol.ChainState.RecoveryPrefix
 
@@ -191,16 +192,9 @@ theorem honestCarriedAttestation_emittedBeforeIndex
       obtain ⟨i, hi, himit⟩ := hemit
       have hemit' : NamedRun.emits S rho a.val_index (.attest a) ta :=
         ⟨i, hi, himit⟩
-      have htaLt : ta < tp := by
-        apply lt_of_le_of_ne hta
-        intro hEq
-        have haction : tp = S.a a.round :=
-          hEq.symm.trans (Proofs.Optimistic.emits_attest_shape S hemit').2
-        obtain ⟨hguard, -⟩ := block_mem_on_tick_emit S v
-          (rho.stateBefore S j v) tp hblockEmit
-        exact (Proofs.Optimistic.a_ne_proposal_time S haction) hguard.2.1
-      have hij : i < j := eventIndex_lt_of_time_lt S
-        adm.toNamedAdmissibleCore.toNamedScheduleWellFormed hi hprocessTick htaLt
+      have hij : i < j := Internal.NamedOutageEntry.History.emission_index_lt_self_proposed_carrier
+        S rho adm.toNamedAdmissibleCore j v tp X hprocessTick hblockEmit a haX haHon
+        i ta hi himit hta
       exact ⟨i, ta, hij.trans hj, hi, himit, hemit'⟩
     · have hprocess : NamedRun.processes S rho v (.block X) tp :=
         Or.inr ⟨j, hprocessDeliver⟩
@@ -258,12 +252,12 @@ theorem prefixHeightCrossing_exactFGSelectorWitness
         rho.events[i]? = some (Event.tick a.val_index ta) ∧
         Object.attest a ∈ NamedRun.emittedAt S rho i a.val_index ta ∧
         NamedRun.emits S rho a.val_index (Object.attest a) ta ∧
-        ta = S.a a.round ∧
-        a = actionAttestationAt S rho a.val_index a.round ∧
-        actionFGSource S (actionStoreAt S rho a.val_index a.round) =
+        ta = (S.node a.val_index).act a.round ∧
+        a = NamedActionReads.windowActionAttestationAt S rho a.val_index a.round ∧
+        actionFGSource S (NamedActionReads.windowActionReadAt S rho a.val_index a.round) =
           some B.erase ∧
-        B ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
-        ((actionStoreAt S rho a.val_index a.round).st.core.σ B.erase).h =
+        B ∈ (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.bodies ∧
+        ((NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.core.σ B.erase).h =
           blocked + 1 ∧
         (Protocol.derive_named S.E S.cfg B).h = blocked + 1 ∧
         J = (Protocol.derive_named S.E S.cfg B).T_h ∧
@@ -304,15 +298,15 @@ theorem prefixHeightCrossing_exactFGSelectorWitness
   have hselectorB := Classical.choose_spec hselector
   let J : Block V := Classical.choose hselectorB
   have hselectorBJ := Classical.choose_spec hselectorB
-  have hta : ta = S.a a.round := hselectorBJ.1
-  have haAction : a = actionAttestationAt S rho a.val_index a.round :=
+  have hta : ta = (S.node a.val_index).act a.round := hselectorBJ.1
+  have haAction : a = NamedActionReads.windowActionAttestationAt S rho a.val_index a.round :=
     hselectorBJ.2.1
-  have hsource : actionFGSource S (actionStoreAt S rho a.val_index a.round) =
+  have hsource : actionFGSource S (NamedActionReads.windowActionReadAt S rho a.val_index a.round) =
       some B.erase := hselectorBJ.2.2.1
-  have hBmem : B ∈ (actionStoreAt S rho a.val_index a.round).st.bodies :=
+  have hBmem : B ∈ (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.bodies :=
     hselectorBJ.2.2.2.1
   have hBstoredHeight :
-      ((actionStoreAt S rho a.val_index a.round).st.core.σ B.erase).h =
+      ((NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.core.σ B.erase).h =
         blocked + 1 := hselectorBJ.2.2.2.2.1
   have hBderivedHeight :
       (Protocol.derive_named S.E S.cfg B).h = blocked + 1 :=
@@ -328,14 +322,18 @@ theorem prefixHeightCrossing_exactFGSelectorWitness
         rho.stateBeforeTime S ta a.val_index :=
       Proofs.Optimistic.stateBefore_tick_eq_stateBeforeTime S
         adm.toNamedAdmissibleCore.toNamedScheduleWellFormed hiEvent
-    have hBpre : B ∈
-        (rho.stateBeforeTime S (S.a a.round) a.val_index).st.bodies := by
-      simpa only [actionStoreAt, actionReadAt, NamedActionReads.actionReadAt,
-        NamedActionReads.actionReadFrom, NamedActionReads.confirmationReadFrom,
-        NamedActionReads.preparedCache, NamedRun.stateBeforeTime] using! hBmem
-    have hBAtI : B ∈ (rho.stateBefore S i a.val_index).st.bodies := by
+    have hitick : rho.events[i]? =
+        some (.tick a.val_index ((S.node a.val_index).act a.round)) := by
+      simpa only [hta] using hiEvent
+    have hiemit : NamedObject.attest a ∈ NamedRun.emittedAt S rho i a.val_index
+        ((S.node a.val_index).act a.round) := by
+      simpa only [hta] using hiEmit
+    have hBpost : B ∈ (NamedRun.stateBefore S rho (i + 1) a.val_index).st.bodies := by
+      rw [(NamedWindowIntrinsicEntry.emission_post_projection S rho hitick hiemit).1]
+      change B ∈ (NamedActionReads.windowActionReadFrom S a.val_index
+        (rho.stateBefore S i a.val_index) a.round).st.bodies
       rw [hstate, hta]
-      exact hBpre
+      exact hBmem
     have hBcross : blocked <
         (Protocol.derive_named S.E S.cfg B).h := by
       rw [hBderivedHeight]
@@ -354,13 +352,55 @@ theorem prefixHeightCrossing_exactFGSelectorWitness
       named_height_of_matches ha0Pair
     have ha0Chain : a0 ∈ Protocol.named_chain_attestations B :=
       named_row_mem_chain_of_ancestor hcarrier0 ha0B
-    obtain ⟨k, tk, hkI, hkEvent, hkEmit, hkemit⟩ :=
-      honestCarriedAttestation_emittedBeforeIndex S adm hBAtI ha0Chain ha0Hon
+    obtain ⟨k, hkI, hkEvent, hkEmit⟩ :=
+      NamedCausalCarrierHistory.held_carrier_rows_before S rho adm.toNamedAdmissibleCore
+        i a.val_index hBpost carrier0 hcarrier0 a0 ha0B ha0Hon
     have hkStart : k < start := hkI.trans hiBeforeStart
     exact (hfresh hkStart ha0Hon hkEvent hkEmit ha0Height).elim
   exact ⟨i, a, ta, B, J, hiStart, hiStop, haHon, hiEvent, hiEmit, hemit,
     hta, haAction, hsource, hBmem, hBstoredHeight, hBderivedHeight,
     hJderived, hrow⟩
+
+/-- A point schedule recovers the original prefix selector witness
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem prefixHeightCrossing_exactFGSelectorWitness_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (hbelow : BelowOneThird S rho.honest)
+    {start stop : Nat} {blocked : Height}
+    (hcross : PrefixHeightCrossingWitness S rho stop blocked)
+    (hfresh : Internal.NoLocalHeightPairBefore S rho start blocked) :
+    ∃ (i : Nat) (a : NamedAttestation V) (ta : Time)
+      (B : NamedBlock V) (J : Block V),
+      start ≤ i ∧
+        i < stop ∧
+        a.val_index ∈ rho.honest ∧
+        rho.events[i]? = some (Event.tick a.val_index ta) ∧
+        Object.attest a ∈ NamedRun.emittedAt S rho i a.val_index ta ∧
+        NamedRun.emits S rho a.val_index (Object.attest a) ta ∧
+        ta = S.a a.round ∧
+        a = actionAttestationAt S rho a.val_index a.round ∧
+        actionFGSource S (actionStoreAt S rho a.val_index a.round) =
+          some B.erase ∧
+        B ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
+        ((actionStoreAt S rho a.val_index a.round).st.core.σ B.erase).h =
+          blocked + 1 ∧
+        (Protocol.derive_named S.E S.cfg B).h = blocked + 1 ∧
+        J = (Protocol.derive_named S.E S.cfg B).T_h ∧
+        (a.height_pair.erase = HeightPair.target (blocked + 1) J.root ∨
+          a.height_pair.erase = HeightPair.timeout (blocked + 1)) := by
+  have hread (v : V) (r : Round) : NamedActionReads.windowActionReadAt S rho v r =
+      actionStoreAt S rho v r :=
+    WindowAction.windowActionReadAt_point S rho v r (hpoint v r)
+  have hrow (v : V) (r : Round) : NamedActionReads.windowActionAttestationAt S rho v r =
+      actionAttestationAt S rho v r :=
+    WindowAction.windowActionAttestationAt_point S rho v r (hpoint v r)
+  simpa only [hpoint, hread, hrow] using
+    prefixHeightCrossing_exactFGSelectorWitness S adm hbelow hcross hfresh
+
+#print axioms honestCarriedAttestation_emittedBeforeIndex
+#print axioms prefixHeightCrossing_exactFGSelectorWitness
+#print axioms prefixHeightCrossing_exactFGSelectorWitness_point
 
 end HealingSurface
 end Proofs

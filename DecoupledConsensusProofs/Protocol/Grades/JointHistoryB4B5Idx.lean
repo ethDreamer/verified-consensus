@@ -6,40 +6,17 @@ public import DecoupledConsensusProofs.Protocol.Store.JointHistoryB4B5
 public import DecoupledConsensusProofs.Protocol.Handlers.SGArrivalStampCarrier
 public import DecoupledConsensusProofs.Execution.OutageActionInputs
 public import DecoupledConsensusProofs.Protocol.Grades.HealthyHeadReady
+public import DecoupledConsensusProofs.Execution.CausalCarrierHistory
 
 @[expose] public section
 
 /-!
-# Index form of B4 (delivery/open) and B5 (provenance) (
-, task 2)
+# Indexed grade readiness and SG provenance
 
-Only `capture_ready_token` and `graded_root_below_of_positive` actually take
-the time-based joint history (`LayerAJointHistoryOn`/`SGVoteOnHistory`) as a
-hypothesis; `healthy_emitted_sg_raw_at_index`, `honest_awake_emits`,
-`awake_window_row_head` and `gradeView_vote_row` have no history argument at
-all and are reused verbatim from `JointHistoryB4B5.lean`.
-
-Both restated theorems replace their single TIME bound against the witness
-(`domain ….g2 < t` / `S.a k < t`) with an INDEX bound against `n`
-(`j < n` / `ii < n`), where the bound applies to the tick event's own
-position in `rho.events`, not its time. The two places that serves to need the
-witness time only to compare it against a schedule-derived time bound
-(`hSaklt`, `hlt`) now instead compare two EVENT TIMES directly and lift that
-strict time inequality to an index inequality via `index_lt_of_time_lt`
-(general sortedness, no tick-vs-deliver phase trick needed since here the two
-times are already strictly ordered, not tied): the row's own action-tick time
-`S.a k` is always strictly below the capture/reading tick's time by pure
-schedule arithmetic (`action_delta_le_early_g2`/`early_g2_lt_domain_g2`), so
-`index_lt_of_time_lt` alone gives the index order, with no provenance/
-delivery step required.
-
-The one place that still needs a strict-prefix INDEX (the clause-(3) renewal
-at the confirmed head's own arrival deadline `d = S.a k + Δ`, inside
-`capture_ready_token`'s ancestor branch) is simpler than the time-based
-original: the index form of clause (3) (`LayerAHistoryIdx`'s third clause)
-takes a bare `i ≤ n`, not a `PrefixThrough`, so the existing
-`Proofs.NamedRuntime.stateBeforeTime_eq_prefix` witness `nd` only needs `nd ≤ n`
-(from `nd ≤ j ≤ n`), with no prefix-membership proof to reconstruct at all.
+The capture-readiness proof compares the confirmed head with finality at its
+arrival deadline and at the grade read. Positive support resolves to an
+honest row emitted inside the reader's event prefix, using actual admission
+and strict carrier provenance (PROTOCOL.md `sec:healing-schedule`).
 -/
 
 
@@ -316,12 +293,8 @@ theorem graded_root_below_of_positive
     have hproj : named.val_index = u.val_index := congrArg Protocol.SGVote.val_index hne
     exact hproj.trans hvalocc.1
   have hhon : named.val_index ∈ rho.honest := by rw [hvalw]; exact hw
-  obtain ⟨-, -, -, -, -, hemit⟩ :=
-    NamedOutageProvenance.honest_held_row_emission S rho core.toNamedUnforgeable j v hownrow hhon
-  obtain ⟨ii, hii, hobj⟩ := hemit
-  have hltT : S.a named.round < e.time := by
-    rw [hround]; exact hbound k (List.mem_toFinset.mp hk)
-  have hiij : ii < j := index_lt_of_time_lt rho core.sorted hii hje hltT
+  obtain ⟨ii, hiij, hii, hobj⟩ :=
+    NamedCausalCarrierHistory.held_row_emission_before S rho core j v hownrow hhon
   have hiin : ii < n := lt_trans hiij hjn
   have hkey : tok.key = u.confirmed := by rw [← htoken]; rfl
   have hconfsame : named.confirmed = u.confirmed :=
@@ -341,7 +314,7 @@ theorem graded_root_below_of_positive
       have hpreceq : Block.Preceq raw head := by
         simpa only [Protocol.head_covers, hfind] using! hcov
       obtain ⟨K, hKrun, -, hKroot, hKC⟩ :=
-        hsgv ii named.val_index (S.a named.round) named hhon hii hobj hiin key
+        hsgv ii named.val_index ((S.node named.val_index).act named.round) named hhon hii hobj hiin key
           (hconfsame.trans hc)
       have hcohj := (Proofs.NamedRuntime.stateBefore_invariants S rho j v).1.1.1
       have hheadmem : head ∈ (NamedRun.stateBefore S rho j v).st.core.T :=

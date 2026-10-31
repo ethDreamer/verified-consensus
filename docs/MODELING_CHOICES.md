@@ -754,6 +754,30 @@ tick actually emits a row, P1 and the scheduler's round equation identify
 the row's round and supply the local equality. Consumers of these restated
 interfaces are still being migrated.
 
+The index-bounded emission histories (`LayerAHistoryIdx` and `SGVoteIdx`)
+also use actual action inputs and `Node.act`. Their parameterized read/clock
+forms give explicit point-instance recovery of every original emission field.
+The confirmation and witness-provenance fields still describe their explicit
+paper-time reads; migrating the renewal driver remains unfinished.
+
+For a finality head inserted during its emission tick, the history argument
+uses `CausalCarrierRowsBefore` at that tick's index. Every honest certificate
+row was emitted strictly earlier, including rows carried by a self-proposal
+at the same time. `WindowHistoryFields.clause1_at_action_tick` therefore
+places the head's justified block on the old history chain without assuming
+history at the next event. Its point corollary recovers the original input
+and time equations. The finalized FG-row witness likewise orders the two
+emissions by event index; `finalized_honest_fgRow_point` recovers the original
+strict time ordering when the actions are simultaneous.
+
+The G1/G2 positive-root proofs now trace a held SG row through its actual
+admission. Direct self-admission gives the emitting tick itself; delivery and
+carried-row admission use the sorted event order and strict carrier provenance.
+This places the emission inside the read prefix without identifying its time
+with `S.a`. The capture-readiness and renewal producers still require further
+migration. The prefix height-crossing selector uses the same strict carrier
+ordering for same-tick proposals, with an explicit point-instance recovery.
+
 The checked causal constructors are imported by the stable coverage consumer.
 Its remaining legacy producers, action-index histories and the complete
 output assembly are still being migrated; the complete library does not yet

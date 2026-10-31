@@ -9,19 +9,17 @@ public import DecoupledConsensusProofs.Protocol.ChainState.EntryHeight
 public import DecoupledConsensusProofs.Protocol.Handlers.Invariants2
 public import DecoupledConsensusProofs.Protocol.ChainState.JustificationCertificates
 public import DecoupledConsensusProofs.Execution.OutageProvenance
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowAction
 
 @[expose] public section
 
 /-!
-# Index-bounded guard proofs (task 5)
+# Causal justification histories
 
-`held_justification_checkpoint_on_history`, copied from `HandlerAdmissionGuards.lean`
-with the index hypotheses in place of the time cut, reusing the same
-provenance route (and the same recorded gap on the self-proposal branch) as
-tasks 3-4. `fresh_receipt_derived_and_admitted` and
-`receipt_J_guard_or_already_ordered` never took a run/time/history argument
-at all -- they are single-store-update algebra, not history statements -- so
-both are history-free and reused unchanged via `open... GuardProofsTime`.
+A held head's justification certificate contains an honest height row. Its
+emission lies in the supplied causal prefix, so the existing height history
+places the justification on the witness chain. The retained-body wrapper
+and the post-event consumer use the same proof (PROTOCOL.md#on_block).
 -/
 
 
@@ -70,14 +68,17 @@ private theorem quorum_honest_member (S : Setup V) (rho : NamedRun V)
   have hq : S.E.q ≤ S.E.electorate.weightOf Q := hQ
   omega
 
-theorem held_justification_checkpoint_on_history
+/-- A held head's justification uses only strictly earlier causal rows, even
+when the head was inserted by the current proposal (PROTOCOL.md#on_block). -/
+theorem causal_justification_checkpoint_on_history
     (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
     (n : Nat) (C : NamedBlock V)
     (hhistory : LayerAHistoryIdx S rho n C)
-    (i : Nat) (v : V) (hv : v ∈ rho.honest) (hi : i ≤ n)
+    (i : Nat) (v : V) (hv : v ∈ rho.honest)
     (hbad : S.E.electorate.weightOf (Finset.univ \ rho.honest) < S.E.q)
     (D : NamedBlock V)
-    (hD : D ∈ (NamedRun.stateBefore S rho i v).st.bodies) :
+    (hD : D ∈ (NamedRun.stateBefore S rho i v).st.bodies)
+    (hcausal : Internal.NamedJointOutage.CausalCarrierRowsBefore S rho n D) :
     ∃ J : NamedBlock V,
       NamedRun.blockInRun S rho J ∧
       J ∈ (NamedRun.stateBefore S rho i v).st.bodies ∧
@@ -104,25 +105,22 @@ theorem held_justification_checkpoint_on_history
     obtain ⟨signer, hsignerQ, hsignerHon⟩ := quorum_honest_member S rho Q hQ hbad
     obtain ⟨carrier, a, hcarrier, hrow, hsigner, hp⟩ := hrows signer hsignerQ
     have ha : a.val_index ∈ rho.honest := by simpa only [hsigner] using hsignerHon
-    obtain ⟨j, hj, received, hacc, hsend, hem⟩ :=
-      NamedOutageProvenance.honest_held_ancestor_row_emission S rho
-        core.toNamedUnforgeable i v hD hcarrier hrow ha
-    obtain ⟨k, hk, hemit⟩ := hem
-    have hjn : j < n := lt_of_lt_of_le hj hi
-    have hkj : k ≤ j :=
-      row_emission_index_le_block_acceptance S rho core v carrier j received hacc
-        a hrow ha k hk hemit hsend
-    have hkn : k < n := lt_of_le_of_lt hkj hjn
+    obtain ⟨k, hkn, hk, hemit⟩ := hcausal carrier hcarrier a hrow ha
     obtain ⟨source, entry, hsourceScope, hsourceHeld, hentryScope, hentryHeld,
       hval, htime, hcreate, hselector, hfields, hheight, htarget, herase,
       hancestor, hsameHeight, hroot, hentryC⟩ :=
-      hhistory.2.2.1 k a.val_index (S.a a.round) a ha hk hemit hkn
+      hhistory.2.2.1 k a.val_index ((S.node a.val_index).act a.round) a ha hk hemit hkn
         (derive_named S.E S.cfg D).h_j J.root false hp
     have heq : entry = J := core.root_injective C D hhistory.1 hDscope
       entry J (Or.inl hentryC) (Or.inr hJD) hroot
     subst entry
-    have hco := (Proofs.NamedOutageInputs.action_read_invariant S rho k a.val_index a.round).1.1
-    have hsourceState := hco.2.2.2.2 source hsourceHeld
+    have hco := (WindowAction.windowRead_invariant S a.val_index
+      (NamedRun.stateBefore S rho k a.val_index) ((S.node a.val_index).act a.round)
+      (Proofs.NamedRuntime.stateBefore_invariants S rho k a.val_index).1).1.1
+    have hsourceState :
+        (NamedActionReads.windowActionReadFrom S a.val_index
+          (NamedRun.stateBefore S rho k a.val_index) a.round).st.core.σ source.erase =
+          derive_named S.E S.cfg source := hco.2.2.2.2 source hsourceHeld
     rw [hsourceState] at hheight herase
     have hJheight : (derive_named S.E S.cfg J).h = (derive_named S.E S.cfg D).h_j :=
       hsameHeight.trans hheight.symm
@@ -134,6 +132,36 @@ theorem held_justification_checkpoint_on_history
       exact False.elim (hz hzero)
     · intro _
       exact ⟨hJheight, hJentry⟩
+
+theorem held_justification_checkpoint_on_history
+    (S : Setup V) (rho : NamedRun V) (core : NamedAdmissibleCore S rho)
+    (n : Nat) (C : NamedBlock V)
+    (hhistory : LayerAHistoryIdx S rho n C)
+    (i : Nat) (v : V) (hv : v ∈ rho.honest) (hi : i ≤ n)
+    (hbad : S.E.electorate.weightOf (Finset.univ \ rho.honest) < S.E.q)
+    (D : NamedBlock V)
+    (hD : D ∈ (NamedRun.stateBefore S rho i v).st.bodies) :
+    ∃ J : NamedBlock V,
+      NamedRun.blockInRun S rho J ∧
+      J ∈ (NamedRun.stateBefore S rho i v).st.bodies ∧
+      NamedBlock.Preceq J D ∧
+      J.erase = (derive_named S.E S.cfg D).J ∧
+      NamedBlock.Preceq J C ∧
+      ((derive_named S.E S.cfg D).h_j = 0 → J = .genesis) ∧
+      ((derive_named S.E S.cfg D).h_j ≠ 0 →
+        (derive_named S.E S.cfg J).h = (derive_named S.E S.cfg D).h_j ∧
+        (derive_named S.E S.cfg J).T_h = J.erase) := by
+  apply causal_justification_checkpoint_on_history S rho core n C hhistory i v hv hbad D hD
+  intro A hAD a hrow ha
+  obtain ⟨j, hji, received, hacc, hsend, k, hk, hem⟩ :=
+    NamedOutageProvenance.honest_held_ancestor_row_emission S rho
+      core.toNamedUnforgeable i v hD hAD hrow ha
+  have hkj := NamedCausalCarrierHistory.row_emission_index_lt_block_acceptance
+    S rho core v A j received hacc a hrow ha k _ hk hem hsend
+  exact ⟨k, (hkj.trans hji).trans_le hi, hk, hem⟩
+
+#print axioms causal_justification_checkpoint_on_history
+#print axioms held_justification_checkpoint_on_history
 
 #print axioms fresh_receipt_derived_and_admitted
 end DecoupledConsensusModel.Proofs.NamedOutageHistory.GuardProofs

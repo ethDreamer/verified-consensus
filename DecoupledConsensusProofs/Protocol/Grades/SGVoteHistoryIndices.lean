@@ -246,12 +246,8 @@ theorem graded_root_below_of_positive_g1
     have hproj : named.val_index = u.val_index := congrArg Protocol.SGVote.val_index hne
     exact hproj.trans hvalocc.1
   have hhon : named.val_index ∈ rho.honest := by rw [hvalw]; exact hw
-  obtain ⟨-, -, -, -, -, hemit⟩ :=
-    NamedOutageProvenance.honest_held_row_emission S rho core.toNamedUnforgeable j v hownrow hhon
-  obtain ⟨ii, hii, hobj⟩ := hemit
-  have hltT : S.a named.round < e.time := by
-    rw [hround]; exact hbound k (List.mem_toFinset.mp hk)
-  have hiij : ii < j := index_lt_of_time_lt rho core.sorted hii hje hltT
+  obtain ⟨ii, hiij, hii, hobj⟩ :=
+    NamedCausalCarrierHistory.held_row_emission_before S rho core j v hownrow hhon
   have hiin : ii < n := lt_trans hiij hjn
   have hkey : tok.key = u.confirmed := by rw [← htoken]; rfl
   have hconfsame : named.confirmed = u.confirmed :=
@@ -271,7 +267,7 @@ theorem graded_root_below_of_positive_g1
       have hpreceq : Block.Preceq raw head := by
         simpa only [Protocol.head_covers, hfind] using! hcov
       obtain ⟨K, hKrun, -, hKroot, hKC⟩ :=
-        hsgv ii named.val_index (S.a named.round) named hhon hii hobj hiin key
+        hsgv ii named.val_index ((S.node named.val_index).act named.round) named hhon hii hobj hiin key
           (hconfsame.trans hc)
       have hcohj := (Proofs.NamedRuntime.stateBefore_invariants S rho j v).1.1.1
       have hheadmem : head ∈ (NamedRun.stateBefore S rho j v).st.core.T :=
