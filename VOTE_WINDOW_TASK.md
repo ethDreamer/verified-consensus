@@ -356,6 +356,72 @@ producer is recovered as an explicit specialization; check this
 explicitly. `scripts/VoteWindowLateCarrier.lean` falls under the same
 promotion-or-deletion rule as the early-carrier diagnostic.
 
+*Resolution of the honest-carrier/row-expiry question (2026-10-31)*: your
+`CarrierDeadlineGap` check is accepted, and it supersedes the previous
+paragraph's re-anchoring instruction: "the first admissible proposal at or
+after the cutoff" is not regime-honest. Under the regime as stated —
+`StrongMultiProposerRecurrence` at any gap, `η_SG ≥ 1` — no honest proposal
+need exist in a round-`q` row's admission window after the P2 deadline when
+`R ≥ 4`, and the row expires uncarried. Unlike the ten blockers before it,
+this is NOT a simultaneity artifact of the model. It is a property of the
+protocol's premise set: the paper's combined attestation serves two readers
+with two deadlines. Its SG safe vote is read from the pool by the grades,
+and P2's `T_{r+1} − 5Δ` is exactly that reader's deadline. Its FG height
+and finality pairs are read from the chain by the state transition, so they
+must be carried by a regime-honest proposer while the row is admissible,
+and the only regime-honest proposals are the triple's, the last of them the
++2 slot at `T_r + 8Δ`. The point schedule satisfies `a_r + Δ ≤ T_r + 8Δ`
+for every `R`, so the carriage deadline was invisible, coinciding with the
+P2 margin at `R = 3` only. The triple recurrence is calibrated to an action
+instant between the +1 and +2 proposals; a window past `+2 − Δ` separates
+the two deadlines, and the executable specification separates the two
+readers in the same way (safe votes are their own on-chain object with
+`SAFE_VOTE_EXPIRY_ROUNDS = 2`; FG evidence travels in the regular per-slot
+attestations). Resolution: do NOT add a premise, do NOT strengthen P2, do
+NOT weaken any protected bound, and do NOT re-index any consumer to the
+next triple or to timeout-only progress. Which protocol-level repair
+applies — a carrier premise in the regime bundle, a carrier-bounded window
+`act + Δ ≤ proposal_time (opening_slot r + 2)` for the FG pair, or
+splitting the action into an SG-vote time under P1–P3 and an
+FG-attestation time bounded by +2 — is a design decision escalated to the
+task owner and the paper's author; it is not yours to pick. What is
+authorized now is the seam that every one of those repairs plugs into.
+(i) Define an internal predicate `CarrierCoverage S rho q`: every honest
+round-`q` row (`windowActionAttestationAt`) is covered chain-or-own at some
+proposal whose proposer is honest, whose slot admits round `q`, and which
+lies within the horizon; state it in `DecoupledConsensusInternal` or
+`Proofs`, never in `Setup` or `Statements`. (ii) Restate the carriage
+consumers — `carrierPlusTwoCarriesRoundRows_named`, the
+`rowsCarriedAtPlusTwo` field of `CarrierFinalityFirstHalfAt` and its
+coverage fields, `W4CarrierFinalityField`, `W4FKChainCommonFinalized` and
+the chain through `W4FinalityClosed` — to consume `CarrierCoverage` (or the
+carried-row conclusions it yields) in place of the removed availability
+producer, keeping their live-accumulator conditions as resolved before.
+(iii) Prove `CarrierCoverage` as derived lemmas, from the existing triple
+premise and nothing else, for the point instance (recovering the original
+own-row contract), for `R = 3` (already done), and for the carrier-bounded
+window `∀ v, (S.node v).act q + Δ ≤ proposal_time (opening_slot q + 2)`,
+of which the first two are instances. (iv) At the one place where a
+protected finality or liveness proof needs `CarrierCoverage` with only
+P1–P3 in hand, leave exactly one tracked placeholder,
+`-- SORRY(vote-window): carrier coverage is not derivable from the triple
+recurrence under P2 (CarrierDeadlineGap); awaiting the carrier decision`,
+and report it as a fourth tracked obligation in every STATUS line; no
+other new placeholder is authorized, and if isolating the dependency needs
+more than one, stop and report. (v) Record the finding in
+`docs/MODELING_CHOICES.md`: name the protected results that reach the
+placeholder (expected: the finality and liveness family through
+`W4FinalityClosed`) and those that do not (expected: every safety result,
+the accountable bound, and confirmation healing); verify both lists from
+the build, not from expectation. (vi) Carriage-independent work continues
+unchanged: the four red modules, `HeightRegimeNamedBase`,
+`StableCoverageConsumer`, `MovingChainDispatch`, ready-view
+classification. If a result you expected carriage-free turns out to reach
+the placeholder, stop and report it: that would widen the finding, and it
+must be known before any repair is chosen. `CarrierDeadlineGap` is the
+finding's permanent home, already properly placed; it is not a diagnostic
+under the deletion rule.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
