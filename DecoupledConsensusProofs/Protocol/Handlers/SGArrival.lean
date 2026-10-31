@@ -570,7 +570,7 @@ private theorem tick_le_clock_before_delivery (S : Setup V) (rho : NamedRun V)
 private theorem delivery_round (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) {i : Nat} {reader : V} {o : NamedObject V}
     {td : Time} (sender : V) (q : Round) (he : rho.events[i]? = some (.deliver reader o td))
-    (hlo : (S.node sender).act q ≤ td) (hhi : td < (S.node sender).act q + S.E.Δ) :
+    (hlo : (S.node sender).act q ≤ td) (hhi : td < Protocol.opening S.E S.hc (q + 1)) :
     S.hc.round_of (NamedRun.stateBefore S rho i reader).st.core.s = q := by
   have hmem := List.mem_of_getElem? he
   have hr : reader ∈ rho.honest := sch.honest_only _ hmem
@@ -580,7 +580,8 @@ private theorem delivery_round (S : Setup V) (rho : NamedRun V)
   have hup := Proofs.NamedRuntime.stateBefore_clock_le_event S rho sch.sorted he
     (sch.in_horizon _ hmem).1 reader
   rw [stateBefore_slot_clock]
-  exact S.round_of_between_act sender q hclock (hup.trans_lt hhi)
+  exact S.round_of_between_openings q _ ((S.opening_le_act sender q).trans hclock)
+    (hup.trans_lt hhi)
 
 private theorem tick_rows_after_proposal (gc : Protocol.GradeContract V) (S : Setup V)
     (nd : Protocol.Node V) (st : Protocol.NamedStore V)
@@ -655,7 +656,8 @@ private theorem actual_call_input (S : Setup V) (rho : NamedRun V)
     (sch : NamedScheduleWellFormed S rho) {i : Nat} {reader : V}
     {a : NamedAttestation V} {td : Time}
     (hcall : NamedRun.actualHandlesAt S rho i reader (.attest a) td)
-    (hlo : (S.node a.val_index).act a.round ≤ td) (hhi : td < (S.node a.val_index).act a.round + S.E.Δ) :
+    (hlo : (S.node a.val_index).act a.round ≤ td)
+    (hhi : td < Protocol.opening S.E S.hc (a.round + 1)) :
     ∃ input : Protocol.NamedStore V, Proofs.NamedStore.Coherent S.E S.cfg input ∧ Data td input ∧
       S.hc.round_of input.core.s = a.round ∧
       ∀ b : NamedAttestation V,
@@ -711,7 +713,8 @@ private theorem actual_call_input (S : Setup V) (rho : NamedRun V)
           (Proofs.NamedRuntime.stateBefore_invariants S rho i reader).1.1.1,
           clock_data S td _ td le_rfl (data_at_event S rho sch he reader).1, ?_⟩
         change S.hc.round_of (S.E.slotOf td) = a.round
-        exact S.round_of_between_act a.val_index a.round hlo hhi
+        exact S.round_of_between_openings a.round td
+          ((S.opening_le_act a.val_index a.round).trans hlo) hhi
     let input := Execution.NamedReceiptCalls.f1Input S before B k
     have hcore := NamedStore.coherent_process_block S.E S.hc S.cfg before B hbefore.1
     have hcoh : Proofs.NamedStore.Coherent S.E S.cfg input :=
@@ -808,6 +811,21 @@ private theorem honest_row_after_input (S : Setup V) (rho : NamedRun V)
       simp [Protocol.Store.sg_pool]
     exact hpost a (NamedAdmission.admitted_original_row S.hc input a hpre hnew)
 
+/-- An honest row received before its next opening is retained with its exact
+payload, including an outage-delayed receipt (PROTOCOL.md `sec:public-handlers`). -/
+theorem honest_row_after_call_before_next_opening (S : Setup V) (rho : NamedRun V)
+    (sch : NamedScheduleWellFormed S rho) (auth : NamedUnforgeable S rho)
+    {i : Nat} {reader : V} {a : NamedAttestation V} {td sent : Time}
+    (ha : a.val_index ∈ rho.honest)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) sent)
+    (hcall : NamedRun.actualHandlesAt S rho i reader (.attest a) td)
+    (hlo : sent ≤ td) (hhi : td < Protocol.opening S.E S.hc (a.round + 1)) :
+    a ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows a.round := by
+  have ht := (Proofs.WindowAction.run_emission_fields S hem).1
+  rw [ht] at hlo
+  obtain ⟨input, hcoh, hd, hround, hpost⟩ := actual_call_input S rho sch hcall hlo hhi
+  exact honest_row_after_input S rho sch auth ha hem i reader input td hcoh hd hround hpost
+
 /-- **A delivered honest row is retained with its own payload** (
 generalised). Exposed for the delivery-to-pool wrapper in
 `NamedEmissionShape`: honesty plus the delivery window rule out every branch of
@@ -822,10 +840,13 @@ theorem honest_row_after_call (S : Setup V) (rho : NamedRun V)
     (hcall : NamedRun.actualHandlesAt S rho i reader (.attest a) td)
     (hlo : sent ≤ td) (hhi : td < sent + S.E.Δ) :
     a ∈ (NamedRun.stateBefore S rho (i + 1) reader).st.sg_rows a.round := by
+  apply honest_row_after_call_before_next_opening S rho sch auth ha hem hcall hlo
   have ht := (Proofs.WindowAction.run_emission_fields S hem).1
-  rw [ht] at hlo hhi
-  obtain ⟨input, hcoh, hd, hround, hpost⟩ := actual_call_input S rho sch hcall hlo hhi
-  exact honest_row_after_input S rho sch auth ha hem i reader input td hcoh hd hround hpost
+  rw [ht] at hhi
+  have hcut := hhi.trans_le (S.act_pre_cutoff a.val_index a.round)
+  have hd := S.E.Δ_pos
+  simp only [Protocol.early, Protocol.Phase.earlyOffset] at hcut
+  linarith
 
 /-- An actual emission retains its own honest row after the attestation's
 preceding duties, at any allowed action time (PROTOCOL.md `sec:public-handlers`). -/
@@ -860,6 +881,7 @@ theorem honest_row_after_emission (S : Setup V) (rho : NamedRun V)
       S.E S.hc (S.node a.val_index) n.st n.record).2.2).sg_rows b.round
   rwa [← hrow]
 
+#print axioms honest_row_after_call_before_next_opening
 #print axioms honest_row_after_emission
 
 private theorem source_deadline_le_next_early (S : Setup V) (q : Round) (hR : 3 ≤ S.hc.R) :

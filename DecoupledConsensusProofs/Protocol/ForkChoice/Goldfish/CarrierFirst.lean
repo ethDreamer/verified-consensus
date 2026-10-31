@@ -256,18 +256,17 @@ private theorem named_ancestor_body_mem {st : Protocol.NamedStore V}
 
 /-! The named proposal row source is the prepared read's own source. -/
 
-/-- A resolved action row is either already on the `+2` proposal's parent
-chain or is carried by the new `+2` proposal. -/
-theorem plusTwoProposal_covers_resolvedRoundRow
-    (S : Setup V) {rho : Run V} (adm : Admissible S rho) (q : Round)
+/-- A resolved honest row is on the parent chain or in the new proposal
+payload (PROTOCOL.md `proposal_attestations`). -/
+theorem proposal_covers_resolvedRoundRow
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho) (s : Slot)
     {a : NamedAttestation V} {B : NamedBlock V}
-    (hB : proposedBlockAt S rho (S.hc.opening_slot q + 2) = some B)
+    (hB : proposedBlockAt S rho s = some B)
     (hhon : a.val_index ∈ rho.honest)
     (hresolved : a ∈ Protocol.NamedProposalRows.select .poolAndCarried S.hc
-      (proposerReadAt S rho (S.hc.opening_slot q + 2)).st) :
+      (proposerReadAt S rho s).st) :
     a ∈ Protocol.NamedProposalRows.chainRows B.parent ∨
       a ∈ B.attestations := by
-  let s := S.hc.opening_slot q + 2
   have hpay := Proofs.NamedActions.proposal_payload
     (NamedProfile.gradeContract (proposerReadAt S rho s).cache) .poolAndCarried
     S.E S.hc (S.node (S.E.proposer s)) (proposerReadAt S rho s).st B hB
@@ -281,6 +280,19 @@ theorem plusTwoProposal_covers_resolvedRoundRow
     apply NamedProposalRows.mem_proposalRows_of_unique B.parent _ a hresolved hchain
     intro b hb hval hround
     exact honest_selected_row_unique S adm s hresolved hb hhon hval hround
+
+/-- A resolved action row is either already on the `+2` proposal's parent
+chain or is carried by the new `+2` proposal. -/
+theorem plusTwoProposal_covers_resolvedRoundRow
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho) (q : Round)
+    {a : NamedAttestation V} {B : NamedBlock V}
+    (hB : proposedBlockAt S rho (S.hc.opening_slot q + 2) = some B)
+    (hhon : a.val_index ∈ rho.honest)
+    (hresolved : a ∈ Protocol.NamedProposalRows.select .poolAndCarried S.hc
+      (proposerReadAt S rho (S.hc.opening_slot q + 2)).st) :
+    a ∈ Protocol.NamedProposalRows.chainRows B.parent ∨
+      a ∈ B.attestations :=
+  proposal_covers_resolvedRoundRow S adm (S.hc.opening_slot q + 2) hB hhon hresolved
 
 /-- On-chain exclusion makes the coverage alternatives disjoint:
 a selected honest row is in the own payload exactly when it is absent from
@@ -364,6 +376,7 @@ theorem plusTwoProposal_carries_resolvedRoundRow_point
 #print axioms honestPlusTwoBlock_holdsRoundRows
 #print axioms noEarlierCarrier_of_roundRows_point
 #print axioms plusTwoProposal_ownRow_iff_not_on_parent_chain
+#print axioms proposal_covers_resolvedRoundRow
 #print axioms plusTwoProposal_covers_resolvedRoundRow
 #print axioms plusTwoProposal_carries_resolvedRoundRow_point
 

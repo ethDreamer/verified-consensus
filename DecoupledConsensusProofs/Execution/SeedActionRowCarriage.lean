@@ -1,45 +1,26 @@
 module
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Protocol.ForkChoice.Goldfish.CarrierFirst
+public import DecoupledConsensusProofs.Protocol.Schedule.WindowActionPoint
+public import DecoupledConsensusProofs.Protocol.Schedule.DeadlineProposal
 
+/-!
+# Honest round rows at proposal deadlines
+
+P2 bounds every action's delivery deadline by the next early G2 cutoff.
+The existing GST premise also bounds outage-delayed arrivals by this cutoff.
+Actual receipt inputs retain the exact named row; the proposal pool selects
+it while its round remains eligible. On-chain exclusion then gives parent-chain
+or own-payload coverage (PROTOCOL.md `sec:grades`, `proposal_attestations`).
+
+The first public proposal after the cutoff is still in the row's round.
+Its honesty is a separate consumer obligation. At the point schedule the
+earlier action-plus-delay cutoff recovers the original +2 producer and its
+own-payload specialization.
+-/
 @[expose] public section
 
 open DecoupledConsensusModel.Statements.Instantiation
-
-/-!
-# Round rows travel with their carrier onto a later opening's parent chain
-
-The gate-off seed's `M - 1` promotion and the fixed-root rows both bottom out
-on one fact: every honest round-`q` action attestation is on the parent chain
-of a later carrier round's opening proposal.
-
-The route has exactly three steps and never names an interior block.
-
-1. **The row reaches the `+2` proposer's own selected source.** The honest
-   round-`q` action is emitted at `S.a q`, one network delay before the
-   proposal at `opening_slot q + 2`, so after GST the honest `+2` proposer has
-   processed it (`honestPlusTwoBlock_holdsRoundRows`). The named source is
-   `Protocol.NamedProposalRows.select.poolAndCarried`, whose FIRST component
-   is the processed pool filtered by the SG admission window alone — no SG
-   resolution is needed for pool rows, which is why this step asks for nothing
-   about grades. The window holds because `opening_slot q + 2` names round `q`
-   or `q + 1`, and `η_SG ≥ 1` covers the second case.
-2. **The `+2` proposal covers the row.** `plusTwoProposal_covers_resolvedRoundRow`
-   splits on on-chain exclusion: the row is either already on the selected
-   parent's chain or carried by the `+2` block itself. Both alternatives put it
-   on the `+2` block's OWN chain, which is all that is needed here; the sharper
-   `plusTwoProposal_carries_resolvedRoundRow` is not required.
-3. **Chain rows are monotone.** `chainRows` is the recursive ancestor row list,
-   so a row on one block's chain is on the chain of every named descendant.
-
-The third step is where the later opening enters: the caller supplies the
-carrier fact `B₂ ⪯ Parent` from the lifecycle and adoption records. That
-premise, post-GST at the round action, and the `+2` proposal horizon are the
-whole round-local input list.
-
-This module sits below `SeedPredPromotionRun` and `HeightProgressFixedRootRun`
-so both can consume `actionRowsOnNextOpeningParentChain` directly.
--/
 
 namespace DecoupledConsensusModel
 namespace Proofs
@@ -51,11 +32,7 @@ open Internal.HealingSurface
 
 variable {V : Type} [DecidableEq V] [Fintype V]
 
-/-! ## 1. Chain rows are monotone along named ancestry -/
-
-
-
-/-! ## 2. The `+2` proposer's admission window covers the round -/
+/-! ## Admission window at the point instance -/
 
 omit [DecidableEq V] [Fintype V] in
 /-- The `+2` slot names the round itself or its successor: `R ≥ 2` keeps it
@@ -107,18 +84,15 @@ theorem inWindow_round_at_plusTwo (S : Setup V) (rho : Run V) (q : Round) :
   rw [hslot, decide_eq_true_eq]
   exact ⟨nat_sub_le_of_le_succ hhi hone, hlo⟩
 
-/-! ## 3. The exact named row at the `+2` proposer read
-
-`exactRow_mem_namedProcessed` is private to `RawHeightCoverageRun`; the lift is
-repeated here rather than weakened, and its shape is unchanged. -/
+/-! ## Exact named rows at a proposal input -/
 
 /-- An honest emitter's exact named row is in the prepared proposal read's own
 processed rows once its erasure is in the duty store's processed pool. -/
 private theorem exactActionRow_mem_namedProcessed
     (S : Setup V) {rho : Run V} (adm : Admissible S rho)
-    {s : Slot} {a : NamedAttestation V}
+    {s : Slot} {a : NamedAttestation V} {sent : Time}
     (haHon : a.val_index ∈ rho.honest)
-    (hemit : rho.emits S a.val_index (Object.attest a) (S.a a.round))
+    (hemit : rho.emits S a.val_index (Object.attest a) sent)
     (hprocessed : a.erase ∈
       (Protocol.proposerDutyStore S rho s).processed_attestations S.hc) :
     a ∈ Protocol.NamedProposalRows.processedRows S.hc
@@ -185,11 +159,125 @@ private theorem exactActionRow_mem_namedProcessed
     hbEmit' hemit hround
   simpa only [st, hba] using hb
 
-/-- **The honest round-`q` action row is in the `+2` proposer's selected
-source.** Pool rows need only processing and the admission window; no SG
-resolution and no grade hypothesis enters. -/
-theorem actionAttestationAt_mem_selectedRows_at_plusTwo
+/-- Actual rows reach a proposal input after a bounded delivery deadline.
+The receipt remains in the action's round; the proposal itself may be later
+(PROTOCOL.md `sec:public-handlers`). -/
+theorem windowActionRow_mem_processedRows_of_deadline
     (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    {q : Round} {s : Slot} {v : V} (hv : v ∈ rho.honest)
+    (hawake : (S.node v).awake q = true)
+    (hprop : S.E.proposer s ∈ rho.honest)
+    (hhor : Protocol.proposal_time S.E s ≤ rho.horizon)
+    {cut : Time}
+    (hdeadline : max ((S.node v).act q) S.E.t_GST + S.E.Δ ≤ cut)
+    (hround : cut ≤ Protocol.opening S.E S.hc (q + 1))
+    (hcut : cut ≤ Protocol.proposal_time S.E s) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈
+      Protocol.NamedProposalRows.processedRows S.hc (proposerReadAt S rho s).st := by
+  let a := NamedActionReads.windowActionAttestationAt S rho v q
+  have hmax : (S.node v).act q + S.E.Δ ≤
+      max ((S.node v).act q) S.E.t_GST + S.E.Δ := by
+    gcongr
+    exact le_max_left _ _
+  have hact : (S.node v).act q < cut :=
+    (lt_add_of_pos_right _ S.E.Δ_pos).trans_le (hmax.trans hdeadline)
+  have hem := WindowAction.honest_emits_action S adm.toNamedScheduleWellFormed hv q
+    hawake (hact.le.trans (hcut.trans hhor))
+  have hf := WindowAction.run_emission_fields S hem
+  have hval : a.val_index = v := hf.2.2
+  have hr : a.round = q := by
+    have hh := S.act_round v a.round
+    rw [← hf.1] at hh
+    exact hh.symm.trans (S.act_round v q)
+  have ha : a.val_index ∈ rho.honest := hval ▸ hv
+  have hem' : NamedRun.emits S rho a.val_index (.attest a) ((S.node v).act q) := by
+    rw [hval]
+    exact hem
+  obtain ⟨td, hlo, hhi, i, hcall⟩ := adm.broadcast v hv (.attest a)
+    ((S.node v).act q) hem (S.E.proposer s) hprop
+    (hdeadline.trans (hcut.trans hhor)) rfl
+  have hrow := NamedSGArrival.honest_row_after_call_before_next_opening S rho
+    adm.toNamedScheduleWellFormed adm.toNamedUnforgeable ha hem' hcall hlo
+    (by rw [hr]; exact hhi.trans_le (hdeadline.trans hround))
+  have hpool := NamedAdmission.pool_view_mem _
+    (NamedRuntime.stateBefore_invariants S rho (i + 1) (S.E.proposer s)).1.1.1.2.2.2.1
+    a hrow
+  obtain ⟨_, e, he, _, htime⟩ := hcall
+  have hretained := Protocol.attest_mem_stateBeforeTime_of_post S
+    adm.toNamedScheduleWellFormed he
+    (show e.time < Protocol.proposal_time S.E s from
+      htime ▸ hhi.trans_le (hdeadline.trans hcut)) hpool
+  have hduty : a.erase ∈ (Protocol.proposerDutyStore S rho s).sg_pool a.round := by
+    simpa only [Protocol.proposerDutyStore, Optimistic.tickStore, Run.storeBeforeTime]
+      using! hretained
+  have hslots : S.hc.opening_slot q ≤ s := by
+    by_contra hn
+    have hm := Protocol.proposal_time_mono_local S.E
+      (Nat.le_of_lt (Nat.lt_of_not_ge hn))
+    exact (not_le_of_gt ((S.opening_le_act v q).trans_lt (hact.trans_le hcut))) hm
+  have hR : 0 < S.hc.R := by have := S.hc.R_ge_three; omega
+  have hrs : q ≤ S.hc.round_of s := by
+    have hh : S.hc.opening_slot q / S.hc.R ≤ s / S.hc.R :=
+      Nat.div_le_div_right hslots
+    simpa only [Protocol.HealConfig.opening_slot, Nat.mul_div_cancel _ hR,
+      Protocol.HealConfig.round_of] using hh
+  apply exactActionRow_mem_namedProcessed S adm ha hem'
+  apply Protocol.mem_processed_attestations_of_pool S.hc _ hduty
+  simpa only [Protocol.proposerDutyStore, Optimistic.tickStore,
+    Optimistic.slotOf_proposal_time, NamedAttestation.erase, hr] using hrs
+
+/-- P2 and the existing GST bound place the whole delivery interval before
+next-round early G2, including actions sent before GST (PROTOCOL.md `sec:grades`). -/
+theorem windowActionRow_mem_processedRows_at_deadline
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    {q : Round} {s : Slot} (hpost : S.E.t_GST ≤ S.a q)
+    (hprop : S.E.proposer s ∈ rho.honest)
+    (hcut : Protocol.early S.E S.hc (q + 1) .g2 ≤ Protocol.proposal_time S.E s)
+    (hhor : Protocol.proposal_time S.E s ≤ rho.horizon)
+    {v : V} (hv : v ∈ rho.honest) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈
+      Protocol.NamedProposalRows.processedRows S.hc (proposerReadAt S rho s).st := by
+  have hpaper := S.hc.a_pre_cutoff S.E q
+  have haHor : S.a q ≤ rho.horizon :=
+    (le_add_of_nonneg_right S.E.Δ_pos.le).trans (hpaper.trans (hcut.trans hhor))
+  apply windowActionRow_mem_processedRows_of_deadline S adm hv
+    (adm.all_awake v hv q hpost haHor) hprop hhor (cut := Protocol.early S.E S.hc (q + 1) .g2)
+  · by_cases hg : S.E.t_GST ≤ (S.node v).act q
+    · rw [max_eq_left hg]
+      exact S.act_pre_cutoff v q
+    · rw [max_eq_right (le_of_not_ge hg)]
+      exact (Int.add_le_add_right hpost S.E.Δ).trans hpaper
+  · have hd := S.E.Δ_pos
+    simp only [Protocol.early, Protocol.Phase.earlyOffset]
+    linarith
+  · exact hcut
+
+/-- Availability supplies selection whenever the round is still eligible in
+this proposal's admission window (PROTOCOL.md `proposal_attestations`). -/
+theorem windowActionRow_mem_selectedRows_at_deadline
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    {q : Round} {s : Slot} (hpost : S.E.t_GST ≤ S.a q)
+    (hprop : S.E.proposer s ∈ rho.honest)
+    (hcut : Protocol.early S.E S.hc (q + 1) .g2 ≤ Protocol.proposal_time S.E s)
+    (hhor : Protocol.proposal_time S.E s ≤ rho.horizon)
+    (hwindow : Protocol.ProposalRows.inWindow S.hc (proposerReadAt S rho s).st.core q = true)
+    {v : V} (hv : v ∈ rho.honest) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈
+      Protocol.NamedProposalRows.select .poolAndCarried S.hc (proposerReadAt S rho s).st := by
+  have hp := windowActionRow_mem_processedRows_at_deadline S adm hpost hprop hcut hhor hv
+  apply List.mem_append_left
+  simp only [Protocol.NamedProposalRows.poolRows, List.mem_filter]
+  refine ⟨hp, ?_⟩
+  have hr : (NamedActionReads.windowActionAttestationAt S rho v q).round = q := by
+    change S.hc.round_of (NamedActionReads.windowActionReadAt S rho v q).st.core.s = q
+    exact WindowAction.actionRead_round S v _ q
+  simpa only [hr] using hwindow
+
+/-- The point schedule recovers the original +2 selection contract from its
+own earlier delivery deadline (PROTOCOL.md `sec:healing-schedule`). -/
+theorem actionAttestationAt_mem_selectedRows_at_plusTwo_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
     {q : Round} (hcar : ProposerCarrierAt S rho q)
     (hpost : S.E.t_GST ≤ S.a q)
     (hhor : Protocol.proposal_time S.E (S.hc.opening_slot q + 2) ≤ rho.horizon)
@@ -197,34 +285,105 @@ theorem actionAttestationAt_mem_selectedRows_at_plusTwo
     actionAttestationAt S rho v q ∈
       Protocol.NamedProposalRows.select .poolAndCarried S.hc
         (proposerReadAt S rho (S.hc.opening_slot q + 2)).st := by
-  have haVal : (actionAttestationAt S rho v q).val_index = v :=
-    (actionAttestationAt_shape S rho v q).1
-  have haRound : (actionAttestationAt S rho v q).round = q :=
-    (actionAttestationAt_shape S rho v q).2.1
-  have hactionHor : S.a q ≤ rho.horizon :=
-    (le_trans (Int.le_add_of_nonneg_right (le_of_lt S.E.Δ_pos))
-      (action_add_delta_le_plusTwo_proposal_time S q)).trans hhor
-  have hemit : rho.emits S (actionAttestationAt S rho v q).val_index
-      (Object.attest (actionAttestationAt S rho v q))
-      (S.a (actionAttestationAt S rho v q).round) := by
-    rw [haVal, haRound]
-    exact honest_emits_exact_actionAttestationAt S adm hv q hactionHor (by assumption)
-  have haHon : (actionAttestationAt S rho v q).val_index ∈ rho.honest := by
-    rw [haVal]
-    exact hv
-  have haProcessed := exactActionRow_mem_namedProcessed S adm haHon hemit
-    (honestPlusTwoBlock_holdsRoundRows S adm hcar hpost hhor hv)
+  have hdelay := action_add_delta_le_plusTwo_proposal_time S q
+  have haHor : S.a q ≤ rho.horizon :=
+    (le_add_of_nonneg_right S.E.Δ_pos.le).trans (hdelay.trans hhor)
+  have hp := windowActionRow_mem_processedRows_of_deadline S adm hv
+    (adm.all_awake v hv q hpost haHor) hcar.2.2 hhor
+    (cut := S.a q + S.E.Δ)
+    (by rw [hpoint, max_eq_left hpost])
+    (by
+      have hh := S.hc.a_pre_cutoff S.E q
+      have hd := S.E.Δ_pos
+      simp only [Protocol.early, Protocol.Phase.earlyOffset] at hh
+      exact hh.trans (by linarith)) hdelay
+  rw [WindowAction.windowActionAttestationAt_point S rho v q (hpoint v q)] at hp
   apply List.mem_append_left
   simp only [Protocol.NamedProposalRows.poolRows, List.mem_filter]
-  refine ⟨haProcessed, ?_⟩
-  rw [haRound]
+  refine ⟨hp, ?_⟩
+  rw [(actionAttestationAt_shape S rho v q).2.1]
   exact inWindow_round_at_plusTwo S rho q
 
-/-! ## 4. The row on a later opening's parent chain -/
+/-- The first public proposal after the cutoff still admits this round's
+rows (PROTOCOL.md `proposal_attestations`). -/
+theorem inWindow_round_at_deadlineProposal (S : Setup V) (rho : Run V) (q : Round) :
+    Protocol.ProposalRows.inWindow S.hc
+      (proposerReadAt S rho (S.deadlineProposalSlot q)).st.core q = true := by
+  unfold Protocol.ProposalRows.inWindow
+  rw [proposerReadAt_slot, S.deadlineProposal_round, decide_eq_true_eq]
+  exact ⟨Nat.sub_le _ _, le_rfl⟩
 
+/-- Every honest round row is selected by an honest first-deadline proposer
+(PROTOCOL.md `proposal_attestations`). -/
+theorem windowActionRow_mem_selectedRows_at_first_deadline
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho) {q : Round}
+    (hpost : S.E.t_GST ≤ S.a q)
+    (hprop : S.E.proposer (S.deadlineProposalSlot q) ∈ rho.honest)
+    (hhor : Protocol.proposal_time S.E (S.deadlineProposalSlot q) ≤ rho.horizon)
+    {v : V} (hv : v ∈ rho.honest) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈
+      Protocol.NamedProposalRows.select .poolAndCarried S.hc
+        (proposerReadAt S rho (S.deadlineProposalSlot q)).st :=
+  windowActionRow_mem_selectedRows_at_deadline S adm hpost hprop
+    ((S.deadlineProposalSlot_le_iff q _).mp le_rfl) hhor
+    (inWindow_round_at_deadlineProposal S rho q) hv
 
+/-- After the deadline, every eligible honest round row is on the proposal's
+parent chain or in its own payload (PROTOCOL.md `proposal_attestations`). -/
+theorem proposal_covers_windowActionRow_at_deadline
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    {q : Round} {s : Slot} (hpost : S.E.t_GST ≤ S.a q)
+    (hprop : S.E.proposer s ∈ rho.honest)
+    (hcut : Protocol.early S.E S.hc (q + 1) .g2 ≤ Protocol.proposal_time S.E s)
+    (hhor : Protocol.proposal_time S.E s ≤ rho.horizon)
+    (hwindow : Protocol.ProposalRows.inWindow S.hc (proposerReadAt S rho s).st.core q = true)
+    {B : NamedBlock V} (hB : proposedBlockAt S rho s = some B)
+    {v : V} (hv : v ∈ rho.honest) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈
+        Protocol.NamedProposalRows.chainRows B.parent ∨
+      NamedActionReads.windowActionAttestationAt S rho v q ∈ B.attestations := by
+  apply proposal_covers_resolvedRoundRow S adm s hB
+  · change (S.node v).val_index ∈ rho.honest
+    simpa only [S.node_val_index] using hv
+  · exact windowActionRow_mem_selectedRows_at_deadline S adm hpost hprop hcut hhor hwindow hv
 
+/-- An honest first-deadline proposal covers every honest round row
+(PROTOCOL.md `proposal_attestations`). -/
+theorem firstDeadlineProposal_covers_roundRow
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho) {q : Round}
+    (hpost : S.E.t_GST ≤ S.a q)
+    (hprop : S.E.proposer (S.deadlineProposalSlot q) ∈ rho.honest)
+    (hhor : Protocol.proposal_time S.E (S.deadlineProposalSlot q) ≤ rho.horizon)
+    {B : NamedBlock V} (hB : proposedBlockAt S rho (S.deadlineProposalSlot q) = some B)
+    {v : V} (hv : v ∈ rho.honest) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈
+        Protocol.NamedProposalRows.chainRows B.parent ∨
+      NamedActionReads.windowActionAttestationAt S rho v q ∈ B.attestations :=
+  proposal_covers_windowActionRow_at_deadline S adm hpost hprop
+    ((S.deadlineProposalSlot_le_iff q _).mp le_rfl) hhor
+    (inWindow_round_at_deadlineProposal S rho q) hB hv
 
+/-- The point instance recovers own-payload carriage at the original +2
+proposal, including the availability premise (PROTOCOL.md `sec:healing-schedule`). -/
+theorem plusTwoProposal_carries_roundRow_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    {q : Round} (hcar : ProposerCarrierAt S rho q)
+    (hpost : S.E.t_GST ≤ S.a q)
+    (hhor : Protocol.proposal_time S.E (S.hc.opening_slot q + 2) ≤ rho.horizon)
+    {B : NamedBlock V} (hB : proposedBlockAt S rho (S.hc.opening_slot q + 2) = some B)
+    {v : V} (hv : v ∈ rho.honest) : actionAttestationAt S rho v q ∈ B.attestations :=
+  plusTwoProposal_carries_resolvedRoundRow_point S hpoint adm hcar hhor hv hB
+    (actionAttestationAt_mem_selectedRows_at_plusTwo_point S adm hpoint hcar hpost hhor hv)
+
+#print axioms windowActionRow_mem_processedRows_of_deadline
+#print axioms windowActionRow_mem_processedRows_at_deadline
+#print axioms windowActionRow_mem_selectedRows_at_deadline
+#print axioms actionAttestationAt_mem_selectedRows_at_plusTwo_point
+#print axioms windowActionRow_mem_selectedRows_at_first_deadline
+#print axioms proposal_covers_windowActionRow_at_deadline
+#print axioms firstDeadlineProposal_covers_roundRow
+#print axioms plusTwoProposal_carries_roundRow_point
 
 end HealingSurface
 end Proofs

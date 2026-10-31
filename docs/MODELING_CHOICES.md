@@ -830,10 +830,32 @@ by the actual-action observer does not restore coverage either.
 The conditional `plusTwoProposal_covers_resolvedRoundRow` result remains
 valid: its resolved-row premise fails in this example. The example does
 not instantiate `CanonicalRegimeRoundAt` or a protected finality regime.
-The current producer of availability at `+2` still relies on the tracked
-point-emission obligation; a window-valid replacement for that producer
-and its carrier cutoff requires a contract resolution. No delivery deadline,
-schedule premise or protected conclusion has been changed.
+The availability producer now uses P2's deadline. With the existing
+`GST ≤ S.a r` premise, both `act v r + Δ` and `GST + Δ` are at most the
+next early G2 cutoff, so the existing synchrony bound
+`max(act v r, GST) + Δ` suffices even for actions sent before GST. The
+receipt remains before the next opening and the actual admission proof
+retains its exact named row. No stronger delivery premise is needed.
+
+`windowActionRow_mem_processedRows_at_deadline` supplies that row in every
+later honest proposal's processed pool within the horizon. Selection also
+checks the protocol's existing admission window: an arbitrarily later
+proposal need not select an expired row. The first public proposal at or
+after P2's cutoff is at slot `opening_slot (r+1) - 1`, exactly one Δ after
+the cutoff and still in round `r`, so its eligibility check is automatic.
+`firstDeadlineProposal_covers_roundRow` proves chain-or-own coverage there
+when that proposer is honest. The scheduling result does not supply honesty
+at this slot; selection of the first admissible honest carrier and its live
+accumulator facts remain consumer obligations.
+
+The original unconditional `actionAttestationAt_mem_selectedRows_at_plusTwo`
+is replaced by the deadline producers and an explicit `_point` specialization.
+The point proof uses its earlier deadline `S.a r + Δ`, which is before `+2`,
+rather than trying to move `+2` past the general window deadline.
+`plusTwoProposal_carries_roundRow_point` combines that availability with the
+checked no-earlier-carrier result to recover the original own-payload form.
+The downstream carrier records and protected healing-bound assembly still
+need re-anchoring; no completed latency proof is asserted here.
 
 The confirmation witnesses for an honestly emitted height row use
 `windowActionReadAt` for its selected source and SG checkpoint. Their point
