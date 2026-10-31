@@ -139,6 +139,36 @@ theorem fgConfirmationWitness_eq_of_compatible_of_height_eq
   · rw [hT, hT']
     exact (Proofs.NamedEntryHeight.entry_eq_on_plateau S.E S.cfg hpre hheight.symm).symm
 
+/-- The actual action input retains the named-store invariant after preceding
+same-tick duties (`PROTOCOL.md#sec:public-handlers`). -/
+private theorem windowAction_coherent (S : Setup V) (rho : Run V) (v : V) (r : Round) :
+    Proofs.NamedStore.Coherent S.E S.cfg
+      (NamedActionReads.windowActionReadAt S rho v r).st :=
+  (WindowAction.windowRead_invariant S v
+    (NamedRun.stateBeforeTime S rho ((S.node v).act r) v) ((S.node v).act r)
+    (NamedRuntime.stateBeforeTime_invariants S rho _ v).1).1.1
+
+/-- A body read by an emitted action is in the post-event run inventory
+(`PROTOCOL.md#sec:public-handlers`). -/
+private theorem windowActionBody_runBlock
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    {a : NamedAttestation V} {t : Time} (ha : a.val_index ∈ rho.honest)
+    (hem : NamedRun.emits S rho a.val_index (.attest a) t) {D : NamedBlock V}
+    (hD : D ∈ (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.bodies) :
+    RunBlock S rho D := by
+  have ht := (WindowAction.run_emission_fields S hem).1
+  subst t
+  obtain ⟨i, hi, ho⟩ := hem
+  have hpfx := NamedRuntime.tick_prefix_eq_strict S rho
+    adm.toNamedScheduleWellFormed.sorted adm.toNamedScheduleWellFormed.nodup hi
+  have hpost : D ∈ (NamedRun.stateBefore S rho (i + 1) a.val_index).st.bodies := by
+    rw [NamedRuntime.stateBefore_tick S rho hi,
+      (WindowAction.tick_input_projection S a.val_index _ a.round).1]
+    rw [hpfx]
+    exact hD
+  exact NamedRuntime.blockInRun_of_direct S rho
+    (NamedRuntime.directBlock_of_prefix S rho ha (i + 1) hpost)
+
 /-! ## Exact row provenance -/
 
 theorem honestHeightRow_confirmationWitness
@@ -149,12 +179,12 @@ theorem honestHeightRow_confirmationWitness
     (hh : a.height_pair.erase.height? = some h) :
     ∃ D K : NamedBlock V,
       fgConfirmationWitness S
-          (actionStoreAt S rho a.val_index a.round) =
+          (NamedActionReads.windowActionReadAt S rho a.val_index a.round) =
         some (derive_named S.E S.cfg K).T_h ∧
-      D ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
-      actionFGSource S (actionStoreAt S rho a.val_index a.round) = some D.erase ∧
+      D ∈ (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.bodies ∧
+      actionFGSource S (NamedActionReads.windowActionReadAt S rho a.val_index a.round) = some D.erase ∧
       (derive_named S.E S.cfg D).h = h ∧
-      K ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
+      K ∈ (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.bodies ∧
       K.erase = (derive_named S.E S.cfg D).T_h ∧
       (derive_named S.E S.cfg K).h = h ∧
       Block.Preceq K.erase D.erase ∧
@@ -162,16 +192,18 @@ theorem honestHeightRow_confirmationWitness
         a.height_pair.erase = HeightPair.timeout h) := by
   obtain ⟨D, J, htime, ha, hsource, hD, hheight, hnamedHeight, hJ, hrow⟩ :=
     honestEmittedHeightRow_exactFGSelectorWitness S adm haHon hemit hh
-  obtain ⟨K, hK, hKentry, hKheight, hKpre, hKrun⟩ :=
-    action_named_checkpoint S adm haHon hD
+  obtain ⟨K, hKpre, hKentry, hKheight⟩ :=
+    Proofs.NamedEntryHeight.entry_ancestor_same_height S.E S.cfg D
+  have hK := namedAncestorBodyMem
+    (windowAction_coherent S rho a.val_index a.round).2.2.1 hD hKpre
   have hKheight' : (derive_named S.E S.cfg K).h = h :=
     hKheight.trans hnamedHeight
   have hDderive :
-      (actionStoreAt S rho a.val_index a.round).st.core.σ D.erase =
+      (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.core.σ D.erase =
         derive_named S.E S.cfg D :=
-    (actionStore_coherent S adm a.val_index a.round).2.2.2.2 D hD
+    (windowAction_coherent S rho a.val_index a.round).2.2.2.2 D hD
   have hfg' : fgConfirmationWitness S
-      (actionStoreAt S rho a.val_index a.round) =
+      (NamedActionReads.windowActionReadAt S rho a.val_index a.round) =
       some (derive_named S.E S.cfg D).T_h := by
     unfold fgConfirmationWitness
     rw [hsource, Option.map_some, hDderive]
@@ -179,7 +211,7 @@ theorem honestHeightRow_confirmationWitness
     exact (Proofs.NamedEntryHeight.entry_eq_on_plateau S.E S.cfg hKpre hKheight).trans
       hKentry.symm
   have hfgK : fgConfirmationWitness S
-      (actionStoreAt S rho a.val_index a.round) =
+      (NamedActionReads.windowActionReadAt S rho a.val_index a.round) =
       some (derive_named S.E S.cfg K).T_h := by
     rw [hfg']
     congr 1
@@ -204,10 +236,10 @@ theorem frontier_confirmationWitness
       a.height_pair.erase.height? =
         some ((rho.storeBeforeTime S v time).core.h_max - 1) ∧
       fgConfirmationWitness S
-          (actionStoreAt S rho a.val_index a.round) =
+          (NamedActionReads.windowActionReadAt S rho a.val_index a.round) =
         some (derive_named S.E S.cfg K).T_h ∧
-      D ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
-      K ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
+      D ∈ (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.bodies ∧
+      K ∈ (NamedActionReads.windowActionReadAt S rho a.val_index a.round).st.bodies ∧
       K.erase = (derive_named S.E S.cfg D).T_h ∧
       RunBlock S rho K ∧
       (derive_named S.E S.cfg K).h =
@@ -217,9 +249,68 @@ theorem frontier_confirmationWitness
     S adm hmajority hlarge
   obtain ⟨D, K, hfg, hD, -, hDheight, hK, hKentry, hKheight, -, -⟩ :=
     honestHeightRow_confirmationWitness S adm haHon hemit hheight
-  have hKrun := actionBody_runBlock S adm haHon hK
+  have hKrun := windowActionBody_runBlock S adm haHon hemit hK
   exact ⟨a, ta, D, K, haHon, hemit, hta, hheight, hfg, hD, hK,
     hKentry, hKrun, hKheight⟩
+
+/-- The point schedule recovers the original checkpoint observer
+(`PROTOCOL.md#sec:healing-schedule`). -/
+theorem honestHeightRow_confirmationWitness_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    {a : NamedAttestation V} {ta : Time} {h : Height}
+    (haHon : a.val_index ∈ rho.honest)
+    (hemit : rho.emits S a.val_index (Object.attest a) ta)
+    (hh : a.height_pair.erase.height? = some h) :
+    ∃ D K : NamedBlock V,
+      fgConfirmationWitness S
+          (actionStoreAt S rho a.val_index a.round) =
+        some (derive_named S.E S.cfg K).T_h ∧
+      D ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
+      actionFGSource S (actionStoreAt S rho a.val_index a.round) = some D.erase ∧
+      (derive_named S.E S.cfg D).h = h ∧
+      K ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
+      K.erase = (derive_named S.E S.cfg D).T_h ∧
+      (derive_named S.E S.cfg K).h = h ∧
+      Block.Preceq K.erase D.erase ∧
+      (a.height_pair.erase = HeightPair.target h K.erase.root ∨
+        a.height_pair.erase = HeightPair.timeout h) := by
+  have hreads : ∀ v r, NamedActionReads.windowActionReadAt S rho v r =
+      actionStoreAt S rho v r := fun v r =>
+    WindowAction.windowActionReadAt_point S rho v r (hpoint v r)
+  simpa only [hreads] using honestHeightRow_confirmationWitness S adm haHon hemit hh
+
+/-- The point schedule recovers the original checkpoint observer
+(`PROTOCOL.md#sec:healing-schedule`). -/
+theorem frontier_confirmationWitness_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (hmajority : HonestWeightMajority S rho.honest)
+    {v : V} {time : Time}
+    (hlarge : 1 < (rho.storeBeforeTime S v time).h_max) :
+    ∃ (a : NamedAttestation V) (ta : Time) (D K : NamedBlock V),
+      a.val_index ∈ rho.honest ∧
+      NamedRun.emits S rho a.val_index (Object.attest a) ta ∧ ta < time ∧
+      a.height_pair.erase.height? =
+        some ((rho.storeBeforeTime S v time).core.h_max - 1) ∧
+      fgConfirmationWitness S
+          (actionStoreAt S rho a.val_index a.round) =
+        some (derive_named S.E S.cfg K).T_h ∧
+      D ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
+      K ∈ (actionStoreAt S rho a.val_index a.round).st.bodies ∧
+      K.erase = (derive_named S.E S.cfg D).T_h ∧
+      RunBlock S rho K ∧
+      (derive_named S.E S.cfg K).h =
+        (rho.storeBeforeTime S v time).core.h_max - 1 := by
+  have hreads : ∀ v r, NamedActionReads.windowActionReadAt S rho v r =
+      actionStoreAt S rho v r := fun v r =>
+    WindowAction.windowActionReadAt_point S rho v r (hpoint v r)
+  simpa only [hreads] using frontier_confirmationWitness S adm hmajority hlarge
+
+#print axioms honestHeightRow_confirmationWitness
+#print axioms frontier_confirmationWitness
+#print axioms honestHeightRow_confirmationWitness_point
+#print axioms frontier_confirmationWitness_point
 
 /-! ## Source bounds and event-prefix history -/
 

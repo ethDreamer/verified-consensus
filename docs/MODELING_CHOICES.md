@@ -806,8 +806,39 @@ any such carrier before the `+2` proposal at time 8. The `+2` proposal has
 no own attestation rows: the earlier row is already on its parent chain,
 so §7's on-chain exclusion removes it from the new payload. This is an
 internal carrier-exclusivity failure, not a demonstrated counterexample to
-the protected consensus theorem. The carrier contract and its own-row
-consumer require a resolution; neither statement has been weakened.
+the protected consensus theorem. The window contract is chain-or-own coverage:
+`plusTwoProposal_covers_resolvedRoundRow` places the selected row either on
+the parent chain or in the proposal's own payload. On-chain exclusion makes
+these alternatives disjoint, as checked by
+`plusTwoProposal_ownRow_iff_not_on_parent_chain`. Explicit point specializations
+recover both the original no-earlier-carrier result and the original own-row
+result. Downstream consumers of the old own-row result still require migration;
+chain membership by itself does not assert that a parent's live progress or
+finality accumulator contains the signer.
+
+The confirmation witnesses for an honestly emitted height row use
+`windowActionReadAt` for its selected source and SG checkpoint. Their point
+specializations recover the original paper observers. A selected ancestor is
+resolved in the actual input inventory, and post-tick body retention gives
+its run scope even when the action tick first processes a proposal.
+
+Recovery record preservation uses a finality cap through the actual action
+event. `WindowRecoveryInput.input_universe` restricts the fixed cap to the
+post-event inventory, which contains every actual input body, including a
+same-tick proposal. The NJ universe then excludes a recovery-height finality
+row; a fresh target instead becomes a timeout, and an existing timeout repeats.
+These named input lemmas supply the record induction without enlarging its
+hypotheses or increasing elaboration heartbeat limits.
+
+The emitted-target exclusion is correspondingly scoped to an emission event
+strictly inside the capped prefix (`i < stop`), with the actual tick and output
+as witnesses. It no longer uses only the paper-time pre-action cut. For example,
+an action coinciding with a proposal can read that proposal's body although it
+was absent before the tick; a cap through the event bounds that body as well.
+`honestEmittedTarget_height_ne_recovery_named_point` explicitly recovers the
+original weaker pre-action boundary at the point instance, where the action
+input has no proposal duty. General consumers still need to supply the causal
+emission boundary from their existing cutoffs.
 
 The checked causal constructors are imported by the stable coverage consumer.
 Its remaining legacy producers, action-index histories and the complete

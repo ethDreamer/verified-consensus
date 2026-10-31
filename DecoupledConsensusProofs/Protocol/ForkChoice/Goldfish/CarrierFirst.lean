@@ -71,10 +71,10 @@ theorem honestPlusTwoBlock_holdsRoundRows
 
 
 
-/-- No accepted block before the carrier's `+2` proposal can carry an exact
-honest round-`q` action row. -/
-theorem noEarlierCarrier_of_roundRows
-    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+/-- At the point schedule, an honest round row is born after the earlier
+proposals (§6.1, `PROTOCOL.md#sec:healing-schedule`). -/
+theorem noEarlierCarrier_of_roundRows_point
+    (S : Setup V) (hpoint : ∀ v r, (S.node v).act r = S.a r) {rho : Run V} (adm : Admissible S rho)
     {q : Round} (hcar : ProposerCarrierAt S rho q)
     (hhor : Protocol.proposal_time S.E (S.hc.opening_slot q + 2) ≤ rho.horizon)
     {reader : V} {i : Nat} {B : NamedBlock V} {t : Time}
@@ -190,8 +190,10 @@ theorem noEarlierCarrier_of_roundRows
     (actionAttestationAt S rho v q) haP haHon
   have hteq : te = S.a q := by
     calc
-      te = S.a (actionAttestationAt S rho v q).round :=
+      te = (S.node (actionAttestationAt S rho v q).val_index).act
+          (actionAttestationAt S rho v q).round :=
         (Proofs.Optimistic.emits_attest_shape S hemit).2
+      _ = S.a (actionAttestationAt S rho v q).round := hpoint _ _
       _ = S.a q := by rw [(actionAttestationAt_shape S rho v q).2.1]
   have hbefore : Protocol.proposal_time S.E B.slot < S.a q := by
     rcases hslots with hslot | hslot
@@ -280,11 +282,33 @@ theorem plusTwoProposal_covers_resolvedRoundRow
     intro b hb hval hround
     exact honest_selected_row_unique S adm s hresolved hb hhon hval hround
 
-/-- A resolved honest round action is carried by the `+2` proposal itself:
-the parent-chain alternative would give an earlier accepted carrier, which
-`noEarlierCarrier_of_roundRows` excludes. -/
-theorem plusTwoProposal_carries_resolvedRoundRow
-    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+/-- On-chain exclusion makes the coverage alternatives disjoint:
+a selected honest row is in the own payload exactly when it is absent from
+the parent chain (`PROTOCOL.md#proposal_attestations`). -/
+theorem plusTwoProposal_ownRow_iff_not_on_parent_chain
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho) (q : Round)
+    {a : NamedAttestation V} {B : NamedBlock V}
+    (hB : proposedBlockAt S rho (S.hc.opening_slot q + 2) = some B)
+    (hhon : a.val_index ∈ rho.honest)
+    (hresolved : a ∈ Protocol.NamedProposalRows.select .poolAndCarried S.hc
+      (proposerReadAt S rho (S.hc.opening_slot q + 2)).st) :
+    a ∈ B.attestations ↔ a ∉ Protocol.NamedProposalRows.chainRows B.parent := by
+  constructor
+  · intro ha
+    have hpay := Proofs.NamedActions.proposal_payload
+      (NamedProfile.gradeContract
+        (proposerReadAt S rho (S.hc.opening_slot q + 2)).cache) .poolAndCarried
+      S.E S.hc (S.node (S.E.proposer (S.hc.opening_slot q + 2)))
+      (proposerReadAt S rho (S.hc.opening_slot q + 2)).st B hB
+    rw [hpay.2.2.2.2.2.2.1] at ha
+    exact (NamedProposalRows.mem_proposalRows _ _ _ ha).2
+  · intro hoff
+    exact (plusTwoProposal_covers_resolvedRoundRow S adm q hB hhon hresolved).resolve_left hoff
+
+/-- At the point schedule, chain coverage forces own-payload carriage:
+no earlier proposal could carry the row (`PROTOCOL.md#proposal_attestations`). -/
+theorem plusTwoProposal_carries_resolvedRoundRow_point
+    (S : Setup V) (hpoint : ∀ v r, (S.node v).act r = S.a r) {rho : Run V} (adm : Admissible S rho)
     {q : Round} (hcar : ProposerCarrierAt S rho q)
     (hhor : Protocol.proposal_time S.E (S.hc.opening_slot q + 2) ≤ rho.horizon)
     {v : V} (hv : v ∈ rho.honest) {B : NamedBlock V}
@@ -331,16 +355,17 @@ theorem plusTwoProposal_carries_resolvedRoundRow
         have htxe : tx = e.time := htime.symm
         rw [htxe]
         exact hbefore ix e hix he
-      exact False.elim (noEarlierCarrier_of_roundRows S adm hcar
+      exact False.elim (noEarlierCarrier_of_roundRows_point S hpoint adm hcar
         (by simpa only [s, tp] using hhor) hacc'
         (by simpa only [s, tp] using htx) hv hrow)
   · exact hcarry
 
 #print axioms action_add_delta_le_plusTwo_proposal_time
 #print axioms honestPlusTwoBlock_holdsRoundRows
-#print axioms noEarlierCarrier_of_roundRows
+#print axioms noEarlierCarrier_of_roundRows_point
+#print axioms plusTwoProposal_ownRow_iff_not_on_parent_chain
 #print axioms plusTwoProposal_covers_resolvedRoundRow
-#print axioms plusTwoProposal_carries_resolvedRoundRow
+#print axioms plusTwoProposal_carries_resolvedRoundRow_point
 
 end HealingSurface
 end Proofs

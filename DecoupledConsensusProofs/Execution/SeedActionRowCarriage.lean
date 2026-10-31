@@ -176,7 +176,7 @@ private theorem exactActionRow_mem_namedProcessed
     Proofs.Bridges.heldArePastEmissions_of_admissibleCore
       S adm.toNamedAdmissibleCore n (S.E.proposer s) hbN hbHon
   have hbEmit' : rho.emits S a.val_index
-      (Object.attest b) (S.a b.round) := by
+      (Object.attest b) ((S.node a.val_index).act b.round) := by
     simpa only [hbval] using hbEmit
   have hround : b.round = a.round :=
     congrArg CombinedAttestation.round hberase
