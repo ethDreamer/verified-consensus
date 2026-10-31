@@ -857,6 +857,44 @@ checked no-earlier-carrier result to recover the original own-payload form.
 The downstream carrier records and protected healing-bound assembly still
 need re-anchoring; no completed latency proof is asserted here.
 
+For `R = 3`, `deadlineProposalSlot_eq_plusTwo_of_R_eq_three` identifies
+the deadline slot with the carrier's `+2` slot. Thus the existing triple
+supplies proposer honesty: `plusTwoProposal_covers_roundRow_of_R_eq_three`
+proves actual-row chain-or-own coverage, and
+`firstDeadlineProposal_carries_roundRow_point_of_R_eq_three` recovers the
+point instance's own-payload conclusion. For `R ≥ 4`,
+`plusTwo_lt_deadline_of_four_le_R` proves that the entire triple ends before
+the cutoff.
+
+Strong recurrence alone does not guarantee a replacement honest proposer
+while those rows remain eligible. `Protocol/Schedule/CarrierDeadlineGap.lean`
+checks the exact internal opening-carrier recurrence and the protected
+interface's continuous-time strong recurrence for the following schedule:
+`Δ = 1`, `R = 4`, `η_SG = 1`, `gap = 6`, `K = 8`, timeout `2R`, and
+`act v r = 16r + 9`. Honest proposal slots are exactly those congruent to
+`0, 4, 8, 9, 10` modulo 16. The honest triple in round 2 is at slots
+8, 9 and 10 (times 32, 36 and 40); its actions occur at 41, its P2 cutoff
+is 43, and its first public deadline proposal is slot 11 at 44. Slots
+11 through 15 are faulty, including every proposal in round 3. Slot 16,
+at time 64 in round 4, is the first later honest proposal. Round-2 rows
+then fail the unchanged admission window. `expired_at_honest_proposal`
+checks this rejection for any store at any honest proposal after the cutoff.
+The periodic pattern has both honest preceding openings for every recurring
+triple; shifting to the next round's triple is not justified by recurrence.
+
+This is a counterexample to the proposed schedule-level honesty discharge,
+not an admissible-run or finality counterexample: the example's event list
+is empty and no execution validity is asserted. It leaves the consumer
+selection question unresolved. `W4FKChainCommonFinalized` currently needs
+common finality by `S.a (r+1)` (time 54 for the displayed round), whereas
+the first later honest proposal's confirmation is at 70. The enclosing
+phase bound is `4 * progressLag' gap extra + 4 * gap + 7` rounds within the
+protected finality startup/deadline family. No failure of that protected
+bound, or proof that it absorbs a new selection strategy, follows from the
+schedule example. Increasing the timeout family does not establish proposer
+honesty or prevent row expiry; a different consumer argument would need to
+explain what evidence replaces the expired round rows.
+
 The confirmation witnesses for an honestly emitted height row use
 `windowActionReadAt` for its selected source and SG checkpoint. Their point
 specializations recover the original paper observers. A selected ancestor is

@@ -363,6 +363,41 @@ theorem firstDeadlineProposal_covers_roundRow
     ((S.deadlineProposalSlot_le_iff q _).mp le_rfl) hhor
     (inWindow_round_at_deadlineProposal S rho q) hB hv
 
+/-- For three-slot rounds, the existing carrier supplies the deadline
+proposer's honesty, without any additional proposer premise
+(PROTOCOL.md `sec:healing-schedule`). -/
+theorem plusTwoProposal_covers_roundRow_of_R_eq_three
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hR : S.hc.R = 3) {q : Round} (hcar : ProposerCarrierAt S rho q)
+    (hpost : S.E.t_GST ≤ S.a q)
+    (hhor : Protocol.proposal_time S.E (S.hc.opening_slot q + 2) ≤ rho.horizon)
+    {B : NamedBlock V} (hB : proposedBlockAt S rho (S.hc.opening_slot q + 2) = some B)
+    {v : V} (hv : v ∈ rho.honest) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈
+        Protocol.NamedProposalRows.chainRows B.parent ∨
+      NamedActionReads.windowActionAttestationAt S rho v q ∈ B.attestations := by
+  have hs := S.deadlineProposalSlot_eq_plusTwo_of_R_eq_three hR q
+  exact firstDeadlineProposal_covers_roundRow S adm hpost
+    (by simpa only [hs] using hcar.2.2)
+    (by simpa only [hs] using hhor)
+    (by simpa only [hs] using hB) hv
+
+/-- At three slots and the point schedule, deadline coverage retains the
+original own-payload conclusion (PROTOCOL.md `sec:healing-schedule`). -/
+theorem firstDeadlineProposal_carries_roundRow_point_of_R_eq_three
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    (hR : S.hc.R = 3) {q : Round} (hcar : ProposerCarrierAt S rho q)
+    (hpost : S.E.t_GST ≤ S.a q)
+    (hhor : Protocol.proposal_time S.E (S.deadlineProposalSlot q) ≤ rho.horizon)
+    {B : NamedBlock V} (hB : proposedBlockAt S rho (S.deadlineProposalSlot q) = some B)
+    {v : V} (hv : v ∈ rho.honest) :
+    NamedActionReads.windowActionAttestationAt S rho v q ∈ B.attestations := by
+  rw [S.deadlineProposalSlot_eq_plusTwo_of_R_eq_three hR q] at hhor hB
+  rw [WindowAction.windowActionAttestationAt_point S rho v q (hpoint v q)]
+  exact plusTwoProposal_carries_resolvedRoundRow_point S hpoint adm hcar hhor hv hB
+    (actionAttestationAt_mem_selectedRows_at_plusTwo_point S adm hpoint hcar hpost hhor hv)
+
 /-- The point instance recovers own-payload carriage at the original +2
 proposal, including the availability premise (PROTOCOL.md `sec:healing-schedule`). -/
 theorem plusTwoProposal_carries_roundRow_point
@@ -383,6 +418,8 @@ theorem plusTwoProposal_carries_roundRow_point
 #print axioms windowActionRow_mem_selectedRows_at_first_deadline
 #print axioms proposal_covers_windowActionRow_at_deadline
 #print axioms firstDeadlineProposal_covers_roundRow
+#print axioms plusTwoProposal_covers_roundRow_of_R_eq_three
+#print axioms firstDeadlineProposal_carries_roundRow_point_of_R_eq_three
 #print axioms plusTwoProposal_carries_roundRow_point
 
 end HealingSurface

@@ -80,6 +80,33 @@ theorem deadlineProposal_round (S : Setup V) (q : Round) :
     rw [← hk] at hh
     exact Nat.le_of_add_le_add_right hh
 
+/-- With three slots per round the honest carrier's `+2` slot is exactly
+the first deadline proposal (PROTOCOL.md `sec:healing-schedule`). -/
+theorem deadlineProposalSlot_eq_plusTwo_of_R_eq_three (S : Setup V)
+    (hR : S.hc.R = 3) (q : Round) :
+    S.deadlineProposalSlot q = S.hc.opening_slot q + 2 := by
+  have hk := S.deadlineProposalSlot_add_one q
+  simp only [HealConfig.opening_slot, Nat.add_mul, Nat.one_mul, hR] at hk ⊢
+  exact Nat.add_right_cancel hk
+
+/-- With at least four slots, the old carrier triple ends strictly before
+the availability cutoff (PROTOCOL.md `sec:healing-schedule`). -/
+theorem plusTwo_lt_deadline_of_four_le_R (S : Setup V)
+    (hR : 4 ≤ S.hc.R) (q : Round) :
+    proposal_time S.E (S.hc.opening_slot q + 2) <
+      early S.E S.hc (q + 1) .g2 := by
+  apply lt_of_not_ge
+  rw [← S.deadlineProposalSlot_le_iff]
+  have hk := S.deadlineProposalSlot_add_one q
+  simp only [HealConfig.opening_slot, Nat.add_mul, Nat.one_mul] at hk ⊢
+  intro hle
+  have hh := Nat.add_le_add_right hle 1
+  rw [hk] at hh
+  exact (Nat.not_le_of_gt hR) (Nat.le_of_add_le_add_left
+    (by simpa only [Nat.add_assoc] using hh))
+
+#print axioms deadlineProposalSlot_eq_plusTwo_of_R_eq_three
+#print axioms plusTwo_lt_deadline_of_four_le_R
 #print axioms deadlineProposal_time
 #print axioms deadlineProposalSlot_le_iff
 #print axioms deadlineProposal_round
