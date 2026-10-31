@@ -12,7 +12,7 @@ public import DecoupledConsensusProofs.Protocol.ValidatorClient.SuccessorTargetR
 public import DecoupledConsensusProofs.Protocol.Grades.GoldfishConePersistence
 public import DecoupledConsensusProofs.Protocol.ChainState.CarrierAlignment
 public import DecoupledConsensusProofs.Protocol.ForkChoice.Goldfish.FreshFGSourceCone
-public import DecoupledConsensusProofs.Execution.SeedActionRowCarriage
+public import DecoupledConsensusProofs.Execution.CarrierCoverage
 public import DecoupledConsensusProofs.Protocol.ChainState.CanonicalDensity
 public import DecoupledConsensusProofs.Protocol.ChainState.CheckpointAlgebra
 public import DecoupledConsensusProofs.Execution.W4FKLockAlignment
@@ -277,36 +277,6 @@ theorem carrierRows_exactTargets_named
     (by simpa only [Lambda] using hrecord)
     (by simpa only [ast, Lambda, actionAttestationAt] using! hlockAligned v hv)
   simpa only [actionAttestationAt, ast, Lambda] using! hpair
-
-
-
-/-- The carrier's `+2` proposal carries every honest round-`r` action row.
-Pool admission alone does it; no grade and no floor activity is used. -/
-theorem carrierPlusTwoCarriesRoundRows_named
-    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
-    {q0 r : Round} (hround : CanonicalRegimeRoundAt S rho q0 r)
-    (hpost : S.E.t_GST ≤
-      Protocol.proposal_time S.E (S.hc.opening_slot r)) :
-    ∀ P2 : NamedBlock V,
-      proposedBlockAt S rho (S.hc.opening_slot r + 2) = some P2 →
-      ∀ v ∈ rho.honest, actionAttestationAt S rho v r ∈ P2.attestations := by
-  have hhorTwo : Protocol.proposal_time S.E (S.hc.opening_slot r + 2) ≤
-      rho.horizon :=
-    (Protocol.proposal_time_le_confirmation_time S.E _).trans
-      hround.inHorizon
-  have hpostAction : S.E.t_GST ≤ S.a r := by
-    refine hpost.trans ?_
-    have hconf : S.a r =
-        Protocol.confirmation_time S.E (S.hc.opening_slot r) := by
-      simp only [Setup.a, Protocol.a_eq_confirmation_time]
-    rw [hconf]
-    exact Protocol.proposal_time_le_confirmation_time S.E _
-  intro P2 hP2 v hv
-  exact plusTwoProposal_carries_resolvedRoundRow S adm hround.carrier hhorTwo
-    hv hP2
-    (actionAttestationAt_mem_selectedRows_at_plusTwo S adm hround.carrier
-      hpostAction hhorTwo hv)
-
 
 
 

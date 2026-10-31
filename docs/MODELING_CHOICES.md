@@ -959,6 +959,45 @@ already-finalized branch; this does not identify an actual head with the
 paper-time +1 head. The carrier-selection assembly and its protected-result
 reachability audit remain unfinished.
 
+The carriage adapter `carrierPlusTwoCarriesRoundRows_named` now consumes the
+common `CarrierCoverage` witness and exposes actual rows in
+`named_chain_attestations B.parent ∨ B.attestations`, together with the same
+honesty, admission, horizon and confirmation bounds. Its historical name does
+not fix the existential slot to +2. It lives in `Execution/CarrierCoverage`;
+the obsolete point-producer call in `W4CarrierFirstHalf` is removed. The two
+assembly callers still need migration, as do the first-half record fields.
+`carrierPlusTwoCarriesRoundRows_named_point` explicitly recovers the former
+paper-observer, own-payload conclusion from the point schedule and triple.
+
+There is an unresolved earlier-action checkpoint question at `targetRows`.
+`CanonicalRegimeRoundAt.openingSource` identifies the source at the paper cut;
+it does not identify the source at an earlier actual action. The current
+first-half justification consumer needs the opening height H to be justified
+by its carrier, either already or from proper target rows for H. A source
+before the opening can instead have height H−1 while the opening advances
+to H. This is distinct from arrival or carriage: an own-payload row for H−1
+does not match H, and ancestry does not provide the height plateau required
+by `emittedAttestation_coveredAtProposal_of_plateau`.
+
+`scripts/VoteWindowOpeningCheckpoint.lean` records the scope of the evidence.
+Its kernel-checked local chain has source height 1, opening height 2 with
+`nj = false`, and an own-payload height-1 row in a carrier whose justification
+and finality heights are both 1. No ancestor of that carrier has justification
+height 2. Its setup satisfies P1–P3, R=3 and the carrier-bounded window, and
+`coverage_if_admissible` derives the seam under the stated admissibility
+hypothesis. The executable tick probe acts at 25, before opening confirmation
+at 30: it prints an actual height-1 row, a paper height-2 row, and no proposal
+observer with justification height 2 through slot 9 (confirmation at 42).
+Those runtime values are not kernel-proved, and neither full admissibility
+nor the selected late-regime premises are proved for the probe. The local
+chain is therefore evidence against an unconditional plateau/alignment step,
+not a counterexample to a protected theorem. Whether the selected-regime
+premises exclude it, or the first-half checkpoint and phase argument need a
+different formulation, remains unresolved. No alignment or live-accumulator
+premise has been added to the seam, and no additional placeholder has been
+inserted. The closed-boundary placeholder and build-derived protected-result
+reachability audit remain pending.
+
 `W4FKChainCommonFinalized` currently needs
 common finality by `S.a (r+1)` (time 54 for the displayed round), whereas
 the first later honest proposal's confirmation is at 70. The enclosing

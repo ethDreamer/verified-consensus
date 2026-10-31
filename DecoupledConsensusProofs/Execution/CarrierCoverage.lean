@@ -1,6 +1,7 @@
 module
 public import DecoupledConsensusProofs.Protocol.ChainState.CarrierCoverage
 public import DecoupledConsensusProofs.Execution.SeedActionRowCarriage
+public import DecoupledConsensusProofs.Protocol.ChainState.RawHeightCoverage
 
 /-!
 # Carriage under a bounded action window
@@ -155,6 +156,46 @@ theorem carrierCoverage_point_own_rows
   intro v hv
   rw [WindowAction.windowActionAttestationAt_point S rho v q (hpoint v q)]
   exact plusTwoProposal_carries_roundRow_point S adm hpoint hcar hpost hhor hB hv
+
+/-- The common coverage witness supplies actual rows in the transition's
+chain-or-own representation, preserving its honesty and confirmation bound
+(PROTOCOL.md `proposal_attestations`). -/
+theorem carrierPlusTwoCarriesRoundRows_named
+    (S : Setup V) {rho : Run V} {r : Round}
+    (hcoverage : CarrierCoverage S rho r) :
+    ∃ (s : Slot) (B : NamedBlock V),
+      S.E.proposer s ∈ rho.honest ∧
+      Protocol.ProposalRows.inWindow S.hc (proposerReadAt S rho s).st.core r = true ∧
+      Protocol.proposal_time S.E s ≤ rho.horizon ∧
+      Protocol.confirmation_time S.E s ≤ S.a (r + 1) ∧
+      proposedBlockAt S rho s = some B ∧
+      ∀ v ∈ rho.honest,
+        NamedActionReads.windowActionAttestationAt S rho v r ∈
+            Protocol.named_chain_attestations B.parent ∨
+          NamedActionReads.windowActionAttestationAt S rho v r ∈ B.attestations := by
+  obtain ⟨s, B, hhonest, hwindow, hhor, hdeadline, hB, hrows⟩ := hcoverage
+  refine ⟨s, B, hhonest, hwindow, hhor, hdeadline, hB, ?_⟩
+  intro v hv
+  exact (hrows v hv).imp chainRows_iff_named_chain.mp id
+
+/-- Explicit recovery of the former consumer's own-payload conclusion at
+the point instance. A canonical-round caller supplies `hcar` and `hhor`
+from its existing round record (PROTOCOL.md `sec:healing-schedule`). -/
+theorem carrierPlusTwoCarriesRoundRows_named_point
+    (S : Setup V) {rho : Run V} (adm : Admissible S rho)
+    (hpoint : ∀ v r, (S.node v).act r = S.a r)
+    {r : Round} (hcar : ProposerCarrierAt S rho r)
+    (hpost : S.E.t_GST ≤ S.a r)
+    (hhor : Protocol.proposal_time S.E (S.hc.opening_slot r + 2) ≤ rho.horizon) :
+    ∀ P2 : NamedBlock V,
+      proposedBlockAt S rho (S.hc.opening_slot r + 2) = some P2 →
+      ∀ v ∈ rho.honest, actionAttestationAt S rho v r ∈ P2.attestations := by
+  intro P2 hP2 v hv
+  have hactual := carrierCoverage_point_own_rows S adm hpoint hcar hpost hhor hP2 v hv
+  rwa [WindowAction.windowActionAttestationAt_point S rho v r (hpoint v r)] at hactual
+
+#print axioms carrierPlusTwoCarriesRoundRows_named
+#print axioms carrierPlusTwoCarriesRoundRows_named_point
 
 #print axioms windowActionRow_mem_selectedRows_at_plusTwo_of_carrier_bound
 #print axioms plusTwoProposal_covers_roundRow_of_carrier_bound
