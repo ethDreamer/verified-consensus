@@ -886,12 +886,15 @@ This is a counterexample to the proposed schedule-level honesty discharge,
 not an admissible-run or finality counterexample: the example's event list
 is empty and no execution validity is asserted. The internal
 `Proofs.HealingSurface.CarrierCoverage` interface isolates the required
-carriage from the pool-delivery deadline. For each honest validator it gives
-a proposal slot and body, proposer honesty, the unchanged admission-window
-check, a proposal time within the horizon, and chain-or-own membership of
-`windowActionAttestationAt`. It is proof-side vocabulary; Setup and the
-regime bundles have no additional premise. The interface does not stipulate
-a common carrier slot, a +2 deadline, or live accumulator membership.
+carriage from the pool-delivery deadline. It gives one common proposal slot
+and body, proposer honesty, the unchanged admission-window check, a proposal
+time within the horizon, confirmation no later than `S.a (q+1)`, and
+chain-or-own membership of every honest `windowActionAttestationAt`.
+The common witness and confirmation bound are internal requirements of the
+carrier consumers, not additional Setup or regime premises. The slot remains
+existential: it is not fixed to +2. `CarrierCoverage.row` recovers the earlier
+per-row existential interface. Coverage does not assert live accumulator
+membership.
 
 `Execution/CarrierCoverage.lean` proves the interface for the carrier-bounded
 window `act v q + Δ ≤ proposal_time (opening_slot q + 2)`, under the existing
@@ -899,7 +902,9 @@ admissibility, triple, GST and horizon premises. The point schedule and
 `R = 3` discharge that bound explicitly; the latter also reuses the checked
 deadline-coverage producer. `carrierCoverage_point_own_rows` retains the
 original own-payload conclusion, with the actual observer rewritten through
-the checked point-read equality. These are conditional instance proofs, not
+the checked point-read equality. All three instances supply the same +2
+proposal for every row and prove its confirmation bound from `R ≥ 3`.
+These are conditional instance proofs, not
 new Setup or regime requirements. No unconditional coverage producer or
 fourth placeholder has yet been introduced; the consumer migration and its
 build-derived protected-result dependency audit remain unfinished.
@@ -923,6 +928,19 @@ consumer still must derive checkpoint alignment, ancestry and retention from
 its causal contracts, or take an already-justified/finalized branch. No such
 conditions have been added to CarrierCoverage or a regime, and bare historical
 chain membership is not treated as live participation.
+
+`RawHeightCoverage.emittedAttestation_not_mem_named_chain_at_emission` checks
+the causal freshness needed by the height accumulators: a row is absent from
+every body held immediately after its own emission event. This includes a
+body inserted by a preceding duty in the same tick, because carried honest
+rows have strictly earlier emission indices.
+`emittedAttestation_coveredAtProposal_of_plateau` combines that fact with the
+existing height-plateau induction. A matching actual row on the parent chain
+contributes to its live progress set, and a proper target row also contributes
+to target participation; an own-payload row remains the other arm. The caller
+still supplies the actual emission event, held anchor, ancestry, matching
+height pair and plateau. These are local proof obligations, not additions to
+CarrierCoverage, and their discharge in the first-half assembly is pending.
 
 `W4FKChainCommonFinalized` currently needs
 common finality by `S.a (r+1)` (time 54 for the displayed round), whereas

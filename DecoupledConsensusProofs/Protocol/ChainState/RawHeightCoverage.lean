@@ -28,6 +28,8 @@ public import DecoupledConsensusProofs.Execution.EmissionShape
 public import DecoupledConsensusProofs.Protocol.Handlers.SGArrival
 public import DecoupledConsensusProofs.Generic.SlotFreshness
 public import DecoupledConsensusProofs.Protocol.ChainState.TargetedTimeoutBinding
+public import DecoupledConsensusProofs.Execution.CausalCarrierHistory
+public import DecoupledConsensusProofs.Protocol.ChainState.CarrierCoverage
 
 @[expose] public section
 
@@ -917,6 +919,58 @@ private theorem emittedAttestation_not_mem_named_chain_before
     rw [← htEq] at htime
     exact lt_irrefl t htime
 
+/-- An attestation cannot already occur on a body held after its own emission
+event. A same-tick self-proposal also selects its rows strictly earlier
+(PROTOCOL.md `proposal_attestations`). -/
+theorem emittedAttestation_not_mem_named_chain_at_emission
+    (S : Setup V) {rho : Run V} (core : NamedAdmissibleCore S rho)
+    {i : Nat} {a : NamedAttestation V} {C : NamedBlock V} {reader : V}
+    (ha : a.val_index ∈ rho.honest)
+    (hi : rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)))
+    (hC : C ∈ (rho.stateBefore S (i + 1) reader).st.bodies) :
+    a ∉ Protocol.named_chain_attestations C := by
+  intro hrow
+  obtain ⟨A, hAC, haA⟩ := namedChain_row_ancestor hrow
+  obtain ⟨j, hji, hj, _⟩ :=
+    NamedCausalCarrierHistory.held_carrier_rows_before S rho core i reader hC A hAC a haA ha
+  have hsame : j = i :=
+    (List.Nodup.getElem?_inj (List.getElem?_eq_some_iff.mp hj).1 core.nodup).mp
+      (hj.trans hi.symm)
+  exact (Nat.ne_of_lt hji) hsame
+
+/-- A covered actual row is live on a height plateau rooted in a body held
+at its emission. The causal exclusion above supplies freshness even if that
+body was introduced by a preceding duty in the same tick. No receipt-time
+or additional delivery premise is used (PROTOCOL.md `alg:state-transition`). -/
+theorem emittedAttestation_coveredAtProposal_of_plateau
+    (S : Setup V) {rho : Run V} (core : NamedAdmissibleCore S rho)
+    {i : Nat} {a : NamedAttestation V} {C B : NamedBlock V} {reader : V}
+    (ha : a.val_index ∈ rho.honest)
+    (hi : rho.events[i]? = some (.tick a.val_index ((S.node a.val_index).act a.round)))
+    (hC : C ∈ (rho.stateBefore S (i + 1) reader).st.bodies)
+    (hCP : NamedBlock.Preceq C B.parent)
+    (hheight : (Protocol.derive_named S.E S.cfg B.parent).h =
+      (Protocol.derive_named S.E S.cfg C).h)
+    (hpair : a.height_pair = .vote (Protocol.derive_named S.E S.cfg C).h
+        (Protocol.derive_named S.E S.cfg C).T_h.root false ∨
+      a.height_pair = .vote (Protocol.derive_named S.E S.cfg C).h
+        (Protocol.derive_named S.E S.cfg C).T_h.root true)
+    (hcoverage : a ∈ Protocol.NamedProposalRows.chainRows B.parent ∨
+      a ∈ B.attestations) :
+    (a ∈ Protocol.named_chain_attestations B.parent ∧
+      a.val_index ∈ (Protocol.derive_named S.E S.cfg B.parent).progress ∧
+      (a.height_pair = .vote (Protocol.derive_named S.E S.cfg C).h
+          (Protocol.derive_named S.E S.cfg C).T_h.root false →
+        a.val_index ∈ (Protocol.derive_named S.E S.cfg B.parent).target_participation)) ∨
+      a ∈ B.attestations := by
+  rcases hcoverage with hchain | hown
+  · have hchain' := chainRows_iff_named_chain.mp hchain
+    have hnot := emittedAttestation_not_mem_named_chain_at_emission S core ha hi hC
+    exact Or.inl ⟨hchain',
+      namedPair_mem_progress_of_suffix_same_height S.E S.cfg hCP hchain' hnot hheight hpair,
+      fun hp => namedTarget_mem_of_suffix_same_height S.E S.cfg hCP hchain' hnot hheight hp⟩
+  · exact Or.inr hown
+
 private theorem exactRow_mem_namedProcessed
     (S : Setup V) {rho : Run V} (adm : Admissible S rho)
     {s : Slot} {a : NamedAttestation V}
@@ -1202,6 +1256,8 @@ theorem actionAttestationAt_coveredAtProposal_of_chainRows
 #print axioms actionAttestationAt_pair_or_hMaxRise
 #print axioms actionAttestationAt_coveredAtProposal
 #print axioms actionAttestationAt_coveredAtProposal_of_chainRows
+#print axioms emittedAttestation_not_mem_named_chain_at_emission
+#print axioms emittedAttestation_coveredAtProposal_of_plateau
 
 
 

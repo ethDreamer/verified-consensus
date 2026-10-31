@@ -94,6 +94,16 @@ theorem carrier_bound_of_R_eq_three (S : Setup V) (hR : S.hc.R = 3) (q : Round) 
   exact (S.deadlineProposalSlot_le_iff q _).mp le_rfl
 
 /-- The bounded-window instance of the internal coverage interface. -/
+private theorem plusTwo_confirmation_le_next_action (S : Setup V) (q : Round) :
+    Protocol.confirmation_time S.E (S.hc.opening_slot q + 2) ≤ S.a (q + 1) := by
+  have hslots : S.hc.opening_slot q + 2 ≤ S.hc.opening_slot (q + 1) := by
+    simpa only [Protocol.HealConfig.opening_slot, Nat.add_mul, Nat.one_mul] using
+      Nat.add_le_add_left S.hc.R_ge_two (q * S.hc.R)
+  simpa only [Setup.a, Protocol.a_eq_confirmation_time] using!
+    Int.add_le_add_right (Protocol.proposal_time_mono S.E hslots) (6 * S.E.Δ)
+
+/-- The bounded-window instance supplies one common carrier and the
+confirmation deadline, without any additional proposer premise. -/
 theorem carrierCoverage_of_carrier_bound
     (S : Setup V) {rho : Run V} (adm : Admissible S rho)
     {q : Round} (hcar : ProposerCarrierAt S rho q)
@@ -103,9 +113,10 @@ theorem carrierCoverage_of_carrier_bound
       Protocol.proposal_time S.E (S.hc.opening_slot q + 2)) :
     CarrierCoverage S rho q := by
   obtain ⟨B, hB⟩ := proposedBlockAt_isSome S rho (S.hc.opening_slot q + 2)
-  intro v hv
-  exact ⟨_, B, hcar.2.2, inWindow_round_at_plusTwo S rho q, hhor, hB,
-    plusTwoProposal_covers_roundRow_of_carrier_bound S adm hcar hpost hhor hbound hB hv⟩
+  exact ⟨_, B, hcar.2.2, inWindow_round_at_plusTwo S rho q, hhor,
+    plusTwo_confirmation_le_next_action S q, hB,
+    fun _ hv => plusTwoProposal_covers_roundRow_of_carrier_bound
+      S adm hcar hpost hhor hbound hB hv⟩
 
 /-- The original point instance of carrier coverage, at the same +2 slot. -/
 theorem carrierCoverage_point
@@ -125,9 +136,10 @@ theorem carrierCoverage_of_R_eq_three
     (hhor : Protocol.proposal_time S.E (S.hc.opening_slot q + 2) ≤ rho.horizon) :
     CarrierCoverage S rho q := by
   obtain ⟨B, hB⟩ := proposedBlockAt_isSome S rho (S.hc.opening_slot q + 2)
-  intro v hv
-  exact ⟨_, B, hcar.2.2, inWindow_round_at_plusTwo S rho q, hhor, hB,
-    plusTwoProposal_covers_roundRow_of_R_eq_three S adm hR hcar hpost hhor hB hv⟩
+  exact ⟨_, B, hcar.2.2, inWindow_round_at_plusTwo S rho q, hhor,
+    plusTwo_confirmation_le_next_action S q, hB,
+    fun _ hv => plusTwoProposal_covers_roundRow_of_R_eq_three
+      S adm hR hcar hpost hhor hB hv⟩
 
 /-- Point recovery retains own-payload carriage of the actual observer, not
 just the weaker existential coverage interface. -/
