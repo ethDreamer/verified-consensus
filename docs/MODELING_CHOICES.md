@@ -816,6 +816,25 @@ result. Downstream consumers of the old own-row result still require migration;
 chain membership by itself does not assert that a parent's live progress or
 finality accumulator contains the signer.
 
+Coverage also requires the row to have arrived by the proposal. P2 bounds
+the actual send plus delay by the next round's early G2 cutoff, which can
+be later than the current round's `+2` proposal. With `Δ = 1`, `R = 4`
+and `act r = 16*r + 9`, the `+2` proposal is at 8, the round-zero action
+is at 9, and its P2 deadline is 10, below the cutoff 11.
+`scripts/VoteWindowLateCarrier.lean` checks a fully admissible nine-tick run
+through horizon 8, with GST zero and all validators awake. Its `+2` parent
+chain and own payload both have no attestation rows, and its selected-row
+list is empty. This refutes the complete contract of
+`actionAttestationAt_mem_selectedRows_at_plusTwo`; replacing the paper row
+by the actual-action observer does not restore coverage either.
+The conditional `plusTwoProposal_covers_resolvedRoundRow` result remains
+valid: its resolved-row premise fails in this example. The example does
+not instantiate `CanonicalRegimeRoundAt` or a protected finality regime.
+The current producer of availability at `+2` still relies on the tracked
+point-emission obligation; a window-valid replacement for that producer
+and its carrier cutoff requires a contract resolution. No delivery deadline,
+schedule premise or protected conclusion has been changed.
+
 The confirmation witnesses for an honestly emitted height row use
 `windowActionReadAt` for its selected source and SG checkpoint. Their point
 specializations recover the original paper observers. A selected ancestor is
