@@ -1,4 +1,5 @@
 module
+public import DecoupledConsensusProofs.Protocol.ChainState.CarrierActionCoverage
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusInternal.LocalFinality
 public import DecoupledConsensusProofs.Generic.CanonicalSuffix
@@ -66,28 +67,6 @@ abbrev AlreadyCommonFinalizedAtOrAbove
     (S : Setup V) (rho : Run V)
     (q source endRound : Round) (H : Height) : Prop :=
   Internal.CommonFinalizedWitnessAt S rho q source endRound H
-
-/-- Exact selected-round input for the carrier-`+2` finality kernel.
-
-The first carrier justifies the opening block's height in its `+1` or `+2`
-proposal.
-The second carrier either starts after an earlier common finality success or
-finalizes the current checkpoint on its `+1` action head in its `+2` proposal.
-All inputs are chain-local. -/
-def NamedHonestActionProposalCoverageAt
-    (S : Setup V) (rho : Run V) (r : Round)
-    (B : NamedBlock V) (H : Height) (T : BlockId) : Prop :=
-  let sigma := derive_named S.E S.cfg B.parent
-  ∀ v ∈ rho.honest,
-    (((actionAttestationAt S rho v r ∈
-          Protocol.named_chain_attestations B.parent ∧
-        v ∈ sigma.progress ∧
-        ((actionAttestationAt S rho v r).height_pair = .vote H T false →
-          v ∈ sigma.target_participation)) ∨
-      actionAttestationAt S rho v r ∈ B.attestations) ∧
-      ((actionAttestationAt S rho v r).height_pair = .vote H T false ∨
-        ∃ e : BlockId, (actionAttestationAt S rho v r).height_pair = .vote H e true))
-
 
 /-- Open: canonical suffix duties do not yet prove that every honest
 round action adopts the carrier's `+1` proposal. This is the exact missing

@@ -1,4 +1,5 @@
 module
+public import DecoupledConsensusProofs.Protocol.ChainState.CarrierFinalityFirstHalf
 public import DecoupledConsensusProofs.Execution.ModelVocabulary
 public import DecoupledConsensusProofs.Protocol.ForkChoice.Goldfish.CanonicalRegimeAssembly
 public import DecoupledConsensusProofs.Execution.CanonicalRegimeProducer
@@ -212,51 +213,6 @@ def MovingChainAtCarrierFrom
 
 /-! ## The first-carrier half of a recurring-finality phase -/
 
-/-- Every field of `RecurringFinalityPhaseAt` that speaks about the phase's
-first carrier. -/
-structure CarrierFinalityFirstHalfAt
-    (S : Setup V) (rho : Run V) (r : Round) (C : Block V) : Prop where
-  grade : NamedGradeFormsAt S rho r C
-  gradeBelowOpening : ∀ P0 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r) = some P0 →
-      Block.Preceq C P0.erase
-  plusOneParent : ∀ P0 P1 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r) = some P0 →
-    proposedBlockAt S rho (S.hc.opening_slot r + 1) = some P1 →
-      proposedParent S rho (S.hc.opening_slot r + 1) = P0.erase
-  checkpointReady : ∀ P0 P1 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r) = some P0 →
-    proposedBlockAt S rho (S.hc.opening_slot r + 1) = some P1 →
-      NamedJustifiedAt S.E S.cfg P1
-          (Protocol.derive_named S.E S.cfg P0).T_h
-          (Protocol.derive_named S.E S.cfg P0).h ∨
-        ((Protocol.derive_named S.E S.cfg P1).h =
-            (Protocol.derive_named S.E S.cfg P0).h ∧
-          (Protocol.derive_named S.E S.cfg P1).T_h =
-            (Protocol.derive_named S.E S.cfg P0).T_h)
-  plusTwoParent : ∀ P1 P2 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r + 1) = some P1 →
-    proposedBlockAt S rho (S.hc.opening_slot r + 2) = some P2 →
-      proposedParent S rho (S.hc.opening_slot r + 2) = P1.erase
-  actionCoverage : ∀ P0 P2 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r) = some P0 →
-    proposedBlockAt S rho (S.hc.opening_slot r + 2) = some P2 →
-      NamedHonestActionProposalCoverageAt S rho r P2
-        (Protocol.derive_named S.E S.cfg P0).h
-        (Protocol.derive_named S.E S.cfg P0).T_h.root
-  rowsCarriedAtPlusTwo : ∀ P2 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r + 2) = some P2 →
-    ∀ v ∈ rho.honest, actionAttestationAt S rho v r ∈ P2.attestations
-  targetRows : ∀ P0 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r) = some P0 →
-    ∀ v ∈ rho.honest,
-      (actionAttestationAt S rho v r).height_pair =
-        .vote (Protocol.derive_named S.E S.cfg P0).h
-          (Protocol.derive_named S.E S.cfg P0).T_h.root false
-  actionHeadEq : ∀ P0 P1 : NamedBlock V,
-    proposedBlockAt S rho (S.hc.opening_slot r) = some P0 →
-    proposedBlockAt S rho (S.hc.opening_slot r + 1) = some P1 →
-    ∀ v ∈ rho.honest, actionHeadAt S rho v r = P1.erase
 
 
 /-

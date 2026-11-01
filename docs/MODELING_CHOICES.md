@@ -959,44 +959,81 @@ already-finalized branch; this does not identify an actual head with the
 paper-time +1 head. The carrier-selection assembly and its protected-result
 reachability audit remain unfinished.
 
-The carriage adapter `carrierPlusTwoCarriesRoundRows_named` now consumes the
-common `CarrierCoverage` witness and exposes actual rows in
-`named_chain_attestations B.parent ∨ B.attestations`, together with the same
-honesty, admission, horizon and confirmation bounds. Its historical name does
-not fix the existential slot to +2. It lives in `Execution/CarrierCoverage`;
-the obsolete point-producer call in `W4CarrierFirstHalf` is removed. The two
-assembly callers still need migration, as do the first-half record fields.
-`carrierPlusTwoCarriesRoundRows_named_point` explicitly recovers the former
-paper-observer, own-payload conclusion from the point schedule and triple.
+The FG obstruction has two facets. Rows can miss every regime-honest
+proposal in their admission window, and rows emitted before the opening's
+confirmation can name the preceding height even when timely carriage succeeds.
+The accepted `VoteWindowOpeningCheckpoint` local chain illustrates the second
+facet: an opening advances from height 1 to height 2 while an earlier action
+still targets height 1. The first-half checkpoint remains the opening's height;
+it has not been weakened to tolerate the older entry.
 
-There is an unresolved earlier-action checkpoint question at `targetRows`.
-`CanonicalRegimeRoundAt.openingSource` identifies the source at the paper cut;
-it does not identify the source at an earlier actual action. The current
-first-half justification consumer needs the opening height H to be justified
-by its carrier, either already or from proper target rows for H. A source
-before the opening can instead have height H−1 while the opening advances
-to H. This is distinct from arrival or carriage: an own-payload row for H−1
-does not match H, and ancestry does not provide the height plateau required
-by `emittedAttestation_coveredAtProposal_of_plateau`.
+`OpeningAlignedCarrierCoverage` is the proof-side interface for both facets.
+It contains the unchanged common `CarrierCoverage`, identifies each actual FG
+source with the first opening, and equates each actual height pair with the
+paper reader's height pair. In the first-half consumer, the existing exact
+paper-target result therefore gives the proper actual target at the same
+opening height. It adds nothing to Setup, a regime, P1–P3, delivery, or proposer
+honesty, and contains no live-accumulator premise. Its common proposal still
+has to admit the row's round, lie within the horizon and confirm by the next
+paper action cut.
 
-`scripts/VoteWindowOpeningCheckpoint.lean` records the scope of the evidence.
-Its kernel-checked local chain has source height 1, opening height 2 with
-`nj = false`, and an own-payload height-1 row in a carrier whose justification
-and finality heights are both 1. No ancestor of that carrier has justification
-height 2. Its setup satisfies P1–P3, R=3 and the carrier-bounded window, and
-`coverage_if_admissible` derives the seam under the stated admissibility
-hypothesis. The executable tick probe acts at 25, before opening confirmation
-at 30: it prints an actual height-1 row, a paper height-2 row, and no proposal
-observer with justification height 2 through slot 9 (confirmation at 42).
-Those runtime values are not kernel-proved, and neither full admissibility
-nor the selected late-regime premises are proved for the probe. The local
-chain is therefore evidence against an unconditional plateau/alignment step,
-not a counterexample to a protected theorem. Whether the selected-regime
-premises exclude it, or the first-half checkpoint and phase argument need a
-different formulation, remains unresolved. No alignment or live-accumulator
-premise has been added to the seam, and no additional placeholder has been
-inserted. The closed-boundary placeholder and build-derived protected-result
-reachability audit remain pending.
+`openingAlignedCarrierCoverage_point` derives the interface from the existing
+triple, admissibility, time bounds and the canonical round's paper
+`openingSource` content. The point equality is needed only in that round.
+The source identification and exact row pair both follow through the checked
+actual-to-paper read equations. The older bare-coverage point and R=3 producers
+remain available, but bare R=3 coverage alone does not supply alignment.
+`fg_window_point_of_R_eq_three` proves that P2 and the FG lower bound force
+`act = S.a` when R=3, and `openingAlignedCarrierCoverage_of_R_eq_three` uses
+that equality to recover the aligned point instance.
+
+The FG timing interval is `[T_q + 6Δ, T_q + 7Δ]`: the opening-confirmation
+lower bound and `act + Δ ≤ proposal_time(opening_slot q + 2)` upper bound.
+`fg_window_two_ticks` proves from P3 that an action in it is exactly `S.a q`
+or `S.a q + Δ`. This is a conditional schedule-instance fact; the SG vote
+continues to have the whole P1–P2 window. The aligned instance at the second
+FG tick is not yet proved. The checked confirmation-constancy contract
+`stateBefore_live_confirmed_of_no_tick` transports `live_confirmed` across a
+no-own-tick interval; it does not equate the complete FG query or height pair.
+Using it at the second tick still requires transporting the prepared frozen
+G0/G2 query, named source derivation and anti-slashing record across intervening
+deliveries, then comparing `get_fg_vote` at the two inputs. No failure of that
+instance is asserted; only the point instance currently closes the complete
+alignment contract.
+
+The first-half record now existentially fixes one proposal and carries all
+observations in `CarrierFinalityFirstHalfAtProposal`. Its historical
+`rowsCarriedAtPlusTwo` field uses actual rows and chain-or-own coverage of that
+proposal. `targetRows` keeps the opening's proper height/target pair.
+`actionCoverage` keeps live parent progress and target participation in the
+parent-height plateau branch; `checkpointReady` otherwise requires an ancestor
+that has already justified that same opening height. `openingBelowParent`
+replaces the fixed +1/+2 parent observations. `actionHeadEq` now records actual
+post-emission named finality-body anchors and their ancestry to the chosen
+parent, rather than equality with a paper-time +1 head.
+
+`NamedHonestActionProposalCoverageAt` and the target-quorum/justification-write
+consumers use actual rows. Their point lemmas recover the original paper-row
+contracts. `namedCarrierJustificationHeight_of_firstHalf` consumes the common
+record and proves the unchanged opening-height justification on its carrier
+chain, keeping the live accumulator tests. The local write algebra is housed
+in `W4FKChainJustificationWrite` so this consumer can be checked independently
+of the higher assembly.
+
+`openingAligned_source_mem_at_action_event` derives the actual opening body's
+post-event membership from the aligned source, input coherence and run-root
+uniqueness. `openingAligned_actionCoverage_of_plateau` then calls
+`emittedAttestation_coveredAtProposal_of_plateau`, retaining live progress and
+target membership. Its actual tick, common-parent ancestry and plateau still
+have to be supplied by the higher assembly's causal contracts; none is an
+extra conjunct of the seam.
+
+The first-half record and justification consumer are checked, but
+`W4CarrierFinalityField`, `W4FKChainCommonFinalized`, the carrier composition
+and `W4FinalityClosed` are not yet migrated to their new signatures. The
+closed-boundary placeholder has not been inserted. Consequently there is no
+build-derived protected-result reachability list yet; the expected finality
+split is not being reported as an audited result.
 
 `W4FKChainCommonFinalized` currently needs
 common finality by `S.a (r+1)` (time 54 for the displayed round), whereas
