@@ -422,6 +422,44 @@ must be known before any repair is chosen. `CarrierDeadlineGap` is the
 finding's permanent home, already properly placed; it is not a diagnostic
 under the deletion rule.
 
+*Resolution of the first-half opening-height question (2026-11-01)*: your
+`VoteWindowOpeningCheckpoint` chain is accepted, and the answer to your
+question is: no existing contract excludes an actual source at `H − 1`
+under P1, and none can, because the exclusion is a point-schedule fact.
+`get_fg_vote` names the height of the deepest G0-compatible block between
+the grade-2 prefix and `Σ.live_confirmed`, and the paper places
+`a_r = T_r + 6Δ` at the opening slot's confirmation evaluation precisely so
+that this block is at or above the honest opening and the height pair names
+its entry `H`. P1 admits actions from `T_r + Δ`, before that evaluation;
+their pairs name the pre-opening entry, and when the opening advanced to
+`H` those rows "name another entry" and record nothing on chain.
+`CanonicalRegimeRoundAt.openingSource` identifies the source at the paper
+cut for exactly this reason. This is the second facet of the honest-carrier
+finding, not a new one: under the triple regime the FG pair's admissible
+emission window is bounded below by the opening's confirmation `T_r + 6Δ`
+and above by carriage `T_r + 7Δ`, two public ticks, while the SG vote keeps
+the whole P1–P2 window. Do NOT restate the first-half checkpoint or phase
+argument to tolerate `H − 1` rows, do NOT strengthen P1, do NOT add
+alignment to `Setup` or any regime, and do NOT insert a second placeholder.
+Widen the seam instead, which stays one internal predicate: extend
+`CarrierCoverage`, or define `OpeningAlignedCarrierCoverage` over it, with
+the alignment the first half consumes — every honest round-`q` row's height
+pair names the round's first opening's entry, the `openingSource` content
+`CanonicalRegimeRoundAt` supplies at the paper cut — stated in `Proofs` or
+`Internal` only. Re-prove its instances from the triple and the existing
+contracts: the point instance is mandatory and must recover the original
+`openingSource` identification; the FG-window instance
+`∀ v, T_q + 6Δ ≤ (S.node v).act q ∧ (S.node v).act q + Δ ≤
+proposal_time (opening_slot q + 2)` if the existing confirmation-constancy
+contracts give it, otherwise report precisely why only the point closes.
+Note that at `R = 3` P2 forces `act ≤ T_q + 6Δ`, so the `R = 3` instance
+is the point instance; record that collapse. The single authorized
+placeholder stays at the closed finality boundary and now discharges the
+widened predicate; the reachability audit is unchanged. Record the
+two-facet statement and the two-tick FG window in
+`docs/MODELING_CHOICES.md`. `scripts/VoteWindowOpeningCheckpoint.lean` is
+an eighth diagnostic under the promotion-or-deletion rule.
+
 **Stage 3 — instantiate the compressed schedule.** Define the sub-round
 assignment (index-based is fine: validator `v` acts at
 `slotStart Δ (opening_slot r + (ι v % (R − 2))) + Δ` for an index function
